@@ -1,0 +1,1617 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO Ops Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#FFF8E7; --surface:#FFFFFF; --surface-alt:#FFF1CC; --border:#F5DFA0;
+    --ink:#121212; --ink-muted:#6E6E6E; --ink-faint:#A3A3A3;
+    --accent:#FFC229; --accent-strong:#F2A900; --accent-soft:#FFEFC2; --accent-ink:#121212;
+    --sidebar-bg:#0D0D0D; --sidebar-bg-alt:#1D1D1D; --sidebar-ink:#FFF3D6; --sidebar-muted:#B7B7B7; --sidebar-border:#2B2B2B;
+    --st-assigned:#A79A7D; --st-assigned-soft:#F2EEE3;
+    --st-progress:#E8993D; --st-progress-soft:#FFF1DC;
+    --st-review:#4FA3D1; --st-review-soft:#E7F4FB;
+    --st-fix:#E1594C; --st-fix-soft:#FDE3E0;
+    --st-fixed:#9370C9; --st-fixed-soft:#EFE7FB;
+    --st-approved:#4FAE6D; --st-approved-soft:#E3F5E9;
+    --danger:#E1594C; --success:#4FAE6D;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.10);
+    --shadow-md:0 8px 22px rgba(0,0,0,.16);
+    --radius:20px; --radius-sm:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0A0A0A; --surface:#161616; --surface-alt:#1F1F1F; --border:#333333;
+      --ink:#F2EFE9; --ink-muted:#A3A3A3; --ink-faint:#7A7A7A;
+      --accent:#FFCB4D; --accent-strong:#FFD873; --accent-soft:#4A3A1C; --accent-ink:#241A0E;
+      --st-assigned:#B9AC8C; --st-assigned-soft:#332A1C;
+      --st-progress:#F0A75A; --st-progress-soft:#3B2A15;
+      --st-review:#74BEE6; --st-review-soft:#1B2E38;
+      --st-fix:#E8836F; --st-fix-soft:#3A231D;
+      --st-fixed:#B29AE0; --st-fixed-soft:#2E2740;
+      --st-approved:#74C692; --st-approved-soft:#1E3527;
+      --danger:#E8836F; --success:#74C692;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0A0A0A; --surface:#161616; --surface-alt:#1F1F1F; --border:#333333;
+    --ink:#F2EFE9; --ink-muted:#A3A3A3; --ink-faint:#7A7A7A;
+    --accent:#FFCB4D; --accent-strong:#FFD873; --accent-soft:#4A3A1C; --accent-ink:#241A0E;
+    --st-assigned:#B9AC8C; --st-assigned-soft:#332A1C;
+    --st-progress:#F0A75A; --st-progress-soft:#3B2A15;
+    --st-review:#74BEE6; --st-review-soft:#1B2E38;
+    --st-fix:#E8836F; --st-fix-soft:#3A231D;
+    --st-fixed:#B29AE0; --st-fixed-soft:#2E2740;
+    --st-approved:#74C692; --st-approved-soft:#1E3527;
+    --danger:#E8836F; --success:#74C692;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Quicksand', system-ui, sans-serif;
+    font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{ font-family:'Baloo 2', system-ui, sans-serif; text-wrap:balance; margin:0; }
+  .num{ font-family:'Quicksand', sans-serif; font-weight:700; font-variant-numeric:tabular-nums; }
+  button{ font-family:inherit; }
+  a{ color:var(--accent-strong); }
+  :root[data-theme="dark"] a, @media (prefers-color-scheme:dark){ a{color:var(--accent);} }
+  ::selection{ background:var(--accent-soft); }
+  button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible{
+    outline:2px solid var(--accent-strong); outline-offset:2px;
+  }
+  .scrollx{ overflow-x:auto; }
+
+  /* ---------- layout shell ---------- */
+  #app{ min-height:100vh; }
+  .shell{ display:flex; min-height:100vh; }
+  .sidebar{
+    width:236px; flex:0 0 236px; background:var(--sidebar-bg); color:var(--sidebar-ink);
+    display:flex; flex-direction:column; padding:20px 14px; gap:18px;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:0 6px; }
+  .brand-mark{
+    width:38px; height:38px; border-radius:50%; background:radial-gradient(circle at 35% 30%, var(--accent-soft), var(--accent) 65%);
+    display:flex; align-items:center; justify-content:center; color:var(--accent-ink);
+    flex:none; box-shadow:0 2px 0 var(--accent-strong);
+  }
+  .brand-mark svg{ width:26px; height:26px; }
+  @keyframes bee-fly{
+    0%,100%{ transform:translate(0,0) rotate(-4deg); }
+    25%{ transform:translate(3px,-6px) rotate(3deg); }
+    50%{ transform:translate(-2px,-2px) rotate(-2deg); }
+    75%{ transform:translate(2px,-8px) rotate(4deg); }
+  }
+  @keyframes bee-wing{ 0%,100%{ transform:scaleY(1); } 50%{ transform:scaleY(.75); } }
+  .flying-bee{ display:inline-flex; animation:bee-fly 2.6s ease-in-out infinite; transform-origin:center; }
+  .flying-bee .wing{ transform-origin:center; animation:bee-wing .18s ease-in-out infinite; }
+  .mascot-bee{ animation:bee-fly 3.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){
+    .flying-bee, .flying-bee .wing, .mascot-bee{ animation:none !important; }
+  }
+  .honeycomb-bg{
+    background-image:
+      linear-gradient(30deg, var(--accent-soft) 12%, transparent 12.5%, transparent 87%, var(--accent-soft) 87.5%, var(--accent-soft)),
+      linear-gradient(150deg, var(--accent-soft) 12%, transparent 12.5%, transparent 87%, var(--accent-soft) 87.5%, var(--accent-soft)),
+      linear-gradient(30deg, var(--accent-soft) 12%, transparent 12.5%, transparent 87%, var(--accent-soft) 87.5%, var(--accent-soft)),
+      linear-gradient(150deg, var(--accent-soft) 12%, transparent 12.5%, transparent 87%, var(--accent-soft) 87.5%, var(--accent-soft)),
+      linear-gradient(60deg, var(--accent-soft) 25%, transparent 25.5%, transparent 75%, var(--accent-soft) 75%, var(--accent-soft)),
+      linear-gradient(60deg, var(--accent-soft) 25%, transparent 25.5%, transparent 75%, var(--accent-soft) 75%, var(--accent-soft));
+    background-size:44px 76px;
+    background-position:0 0, 0 0, 22px 38px, 22px 38px, 0 0, 22px 38px;
+    opacity:.55;
+  }
+  .empty-col{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .empty-col svg{ width:30px; height:30px; opacity:.8; }
+  .brand-name{ font-family:'Archivo',sans-serif; font-weight:700; font-size:15.5px; line-height:1.2; }
+  .brand-sub{ font-size:11px; color:var(--sidebar-muted); }
+  nav.mainnav{ display:flex; flex-direction:column; gap:2px; margin-top:4px; }
+  .navlink{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:16px;
+    color:var(--sidebar-muted); text-decoration:none; font-size:13.5px; font-weight:500;
+    cursor:pointer; border:none; background:none; text-align:left; width:100%;
+  }
+  .navlink svg{ flex:none; opacity:.9; }
+  .navlink:hover{ background:var(--sidebar-bg-alt); color:var(--sidebar-ink); }
+  .navlink.active{ background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .sidebar-spacer{ flex:1; }
+  .sidebar-card{
+    background:var(--sidebar-bg-alt); border:1px solid var(--sidebar-border); border-radius:var(--radius-sm);
+    padding:12px; display:flex; flex-direction:column; gap:8px;
+  }
+  .who{ display:flex; align-items:center; gap:9px; }
+  .avatar{
+    width:32px; height:32px; border-radius:50%; background:var(--accent); color:var(--accent-ink);
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; flex:none;
+    box-shadow:0 2px 0 var(--accent-strong);
+    font-family:'Baloo 2',sans-serif;
+  }
+  .who-name{ font-size:13px; font-weight:600; color:var(--sidebar-ink); }
+  .who-role{ font-size:11px; color:var(--sidebar-muted); }
+  .logout-btn{
+    font-size:12px; color:var(--sidebar-muted); background:none; border:1px solid var(--sidebar-border);
+    border-radius:12px; padding:6px 8px; cursor:pointer; width:100%;
+  }
+  .logout-btn:hover{ color:var(--sidebar-ink); border-color:var(--sidebar-muted); }
+
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:18px 28px; border-bottom:1px solid var(--border); background:var(--surface);
+    position:sticky; top:0; z-index:5;
+  }
+  .topbar h1{ font-size:19px; }
+  .topbar .sub{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
+  .page{ padding:24px 28px 60px; flex:1; }
+  .page-inner{ max-width:1180px; }
+
+  .banner{
+    display:flex; align-items:flex-start; gap:12px; padding:13px 16px; border-radius:var(--radius-sm);
+    background:var(--st-review-soft); border:1px solid var(--st-review); color:var(--ink); margin-bottom:20px;
+  }
+  .banner strong{ color:var(--st-review); }
+  .banner .x{ margin-left:auto; background:none; border:none; cursor:pointer; color:var(--ink-muted); font-size:16px; line-height:1; }
+  .banner.info{ background:var(--st-progress-soft); border-color:var(--st-progress); }
+  .banner.info strong{ color:var(--st-progress); }
+  .banner .banner-btn{
+    background:var(--accent); color:var(--accent-ink); border:none; border-radius:999px; padding:6px 12px;
+    font-size:12.5px; font-weight:600; cursor:pointer; flex:none;
+  }
+
+  /* ---------- buttons / inputs ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:999px; border:1px solid var(--border);
+    background:var(--surface); color:var(--ink); font-size:13px; font-weight:700; cursor:pointer;
+    font-family:'Quicksand',sans-serif; transition:transform .12s ease;
+  }
+  .btn:hover{ border-color:var(--ink-faint); }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--accent); border-color:var(--accent-strong); color:var(--accent-ink); box-shadow:0 2.5px 0 var(--accent-strong); }
+  .btn-primary:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
+  .btn-primary:active{ box-shadow:0 0.5px 0 var(--accent-strong); transform:translateY(2px); }
+  .btn-ghost{ background:none; border-color:transparent; }
+  .btn-ghost:hover{ background:var(--surface-alt); border-color:transparent; }
+  .btn-danger{ color:var(--danger); }
+  .btn-sm{ padding:6px 13px; font-size:12px; border-radius:999px; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{ font-size:12px; font-weight:600; color:var(--ink-muted); }
+  .field input, .field select, .field textarea{
+    padding:9px 12px; border-radius:14px; border:1px solid var(--border); background:var(--surface);
+    color:var(--ink); font-size:13.5px; font-family:inherit; width:100%;
+  }
+  .field textarea{ resize:vertical; min-height:70px; }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--accent-strong); }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .form-grid.full{ grid-template-columns:1fr; }
+
+  /* ---------- pills / badges ---------- */
+  .pill{
+    display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:100px;
+    font-size:11.5px; font-weight:700; white-space:nowrap;
+  }
+  .pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .pill-assigned{ background:var(--st-assigned-soft); color:var(--st-assigned); }
+  .pill-in_progress{ background:var(--st-progress-soft); color:var(--st-progress); }
+  .pill-review{ background:var(--st-review-soft); color:var(--st-review); }
+  .pill-fix{ background:var(--st-fix-soft); color:var(--st-fix); }
+  .pill-fixed{ background:var(--st-fixed-soft); color:var(--st-fixed); }
+  .pill-approved{ background:var(--st-approved-soft); color:var(--st-approved); }
+  .tag{
+    display:inline-flex; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:700;
+    background:var(--surface-alt); color:var(--ink-muted); border:1px solid var(--border);
+  }
+  .tag.new{ color:var(--accent-strong); border-color:var(--accent); background:var(--accent-soft); }
+  .role-badge{ font-size:10.5px; font-weight:700; padding:2px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:.03em; }
+  .role-admin{ background:var(--st-fix-soft); color:var(--st-fix); }
+  .role-manager{ background:var(--st-progress-soft); color:var(--st-progress); }
+  .role-intern{ background:var(--st-approved-soft); color:var(--st-approved); }
+
+  /* ---------- stat cards ---------- */
+  .stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  .stat-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px;
+    display:flex; flex-direction:column; gap:6px; box-shadow:var(--shadow-sm);
+  }
+  .stat-card .label{ font-size:12px; color:var(--ink-muted); font-weight:600; }
+  .stat-card .value{ font-size:28px; font-weight:800; font-family:'Baloo 2',sans-serif; }
+  .stat-card .value.accent{ color:var(--accent-strong); }
+  .stat-card .value.danger{ color:var(--danger); }
+  .stat-card .value.success{ color:var(--success); }
+  .stat-card .delta{ font-size:11.5px; color:var(--ink-faint); }
+
+  /* ---------- filter bar ---------- */
+  .filter-bar{
+    display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:18px;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px;
+  }
+  .filter-bar .field{ min-width:150px; flex:1 1 150px; }
+  .filter-bar .field.grow-search{ flex:2 1 220px; }
+
+  /* ---------- kanban ---------- */
+  .board{ display:flex; gap:14px; align-items:flex-start; padding-bottom:8px; }
+  .board-col{ flex:0 0 264px; width:264px; }
+  .board-col-head{ display:flex; align-items:center; gap:8px; padding:0 4px 10px; }
+  .board-col-head .dot{ width:9px; height:9px; border-radius:50%; }
+  .board-col-head h3{ font-size:13px; }
+  .board-col-head .count{ margin-left:auto; font-size:12px; color:var(--ink-muted); font-family:'Quicksand',sans-serif; }
+  .board-col-body{ display:flex; flex-direction:column; gap:10px; min-height:40px; }
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:13px;
+    box-shadow:var(--shadow-sm); cursor:pointer; display:flex; flex-direction:column; gap:8px;
+  }
+  .card:hover{ border-color:var(--ink-faint); box-shadow:var(--shadow-md); }
+  .card-top{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .card-title{ font-size:13.5px; font-weight:600; line-height:1.35; }
+  .card-meta{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .card-assignee{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-muted); }
+  .card-assignee .avatar{ width:20px; height:20px; font-size:9.5px; }
+  .card-deadline{ font-size:11.5px; font-family:'Quicksand',sans-serif; color:var(--ink-faint); }
+  .card-deadline.overdue{ color:var(--danger); font-weight:700; }
+  .empty-col{ font-size:12px; color:var(--ink-faint); padding:14px 4px; text-align:center; border:1px dashed var(--border); border-radius:14px; }
+
+  /* ---------- modal ---------- */
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(15,22,20,.5); display:flex; align-items:center; justify-content:center;
+    padding:20px; z-index:50;
+  }
+  .modal{
+    background:var(--surface); border-radius:var(--radius); width:100%; max-width:560px; max-height:90vh; overflow-y:auto;
+    box-shadow:var(--shadow-md); border:1px solid var(--border);
+  }
+  .modal-head{ display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--border); }
+  .modal-head h2{ font-size:16.5px; }
+  .modal-close{ background:none; border:none; font-size:19px; cursor:pointer; color:var(--ink-muted); line-height:1; }
+  .modal-body{ padding:20px 22px; display:flex; flex-direction:column; gap:16px; }
+  .modal-foot{ padding:16px 22px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+  .detail-row{ display:flex; gap:14px; font-size:13px; }
+  .detail-row .k{ width:110px; flex:none; color:var(--ink-muted); font-weight:600; }
+  .detail-row .v{ flex:1; }
+  .history{ display:flex; flex-direction:column; gap:8px; }
+  .history-item{ display:flex; gap:10px; font-size:12.5px; }
+  .history-item .t{ color:var(--ink-faint); font-family:'Quicksand',sans-serif; flex:none; width:74px; }
+
+  /* ---------- login ---------- */
+  .login-wrap{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    background:
+      radial-gradient(1100px 500px at 15% -10%, var(--accent-soft), transparent 60%),
+      var(--bg);
+  }
+  .login-card{
+    width:100%; max-width:396px; background:var(--surface); border:1px solid var(--border); border-radius:26px;
+    padding:32px 30px 26px; box-shadow:var(--shadow-md); position:relative;
+  }
+  .login-mascot{ position:absolute; top:-22px; right:22px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.22)); }
+  .login-brand{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .login-title{ font-size:19px; margin-bottom:4px; }
+  .login-sub{ font-size:12.5px; color:var(--ink-muted); margin-bottom:20px; }
+  .login-form{ display:flex; flex-direction:column; gap:13px; }
+  .login-error{ font-size:12.5px; color:var(--danger); min-height:1px; }
+
+  /* ---------- calendar ---------- */
+  .cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
+  .cal-legend{ display:flex; gap:16px; font-size:12px; color:var(--ink-muted); flex-wrap:wrap; }
+  .cal-legend span{ display:flex; align-items:center; gap:6px; }
+  .cal-legend i{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+  .cal-dow{ font-size:11px; font-weight:700; color:var(--ink-faint); text-align:center; padding-bottom:4px; text-transform:uppercase; }
+  .cal-cell{
+    min-height:96px; border:1px solid var(--border); border-radius:16px; background:var(--surface); padding:8px;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .cal-cell.out{ background:var(--surface-alt); opacity:.5; }
+  .cal-cell.clickable{ cursor:pointer; }
+  .cal-cell.clickable:hover{ border-color:var(--accent); }
+  .cal-daynum{ font-size:12px; font-weight:700; font-family:'Quicksand',sans-serif; }
+  .cal-marks{ display:flex; flex-wrap:wrap; gap:3px; }
+  .cal-mark{ width:20px; height:20px; border-radius:50%; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .cal-mark.work{ background:var(--st-approved-soft); color:var(--st-approved); }
+  .cal-mark.leave{ background:var(--st-fix-soft); color:var(--st-fix); text-decoration:line-through; }
+  .cal-self-tag{ margin-top:auto; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:8px; align-self:flex-start; }
+  .cal-self-tag.work{ background:var(--st-approved-soft); color:var(--st-approved); }
+  .cal-self-tag.leave{ background:var(--st-fix-soft); color:var(--st-fix); }
+  .cal-self-tag.none{ background:var(--surface-alt); color:var(--ink-faint); border:1px dashed var(--border); }
+
+  .two-col{ display:grid; grid-template-columns:1.6fr 1fr; gap:20px; align-items:start; }
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
+  .panel h3{ font-size:14.5px; margin-bottom:12px; }
+  .leave-req{ display:flex; flex-direction:column; gap:10px; }
+  .leave-req-item{ border:1px solid var(--border); border-radius:16px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
+  .leave-req-item .top{ display:flex; justify-content:space-between; align-items:center; }
+  .leave-req-item .reason{ font-size:12px; color:var(--ink-muted); }
+  .leave-req-actions{ display:flex; gap:8px; margin-top:2px; }
+
+  /* ---------- table ---------- */
+  table.data-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.data-table th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted);
+    padding:9px 12px; border-bottom:1px solid var(--border); font-weight:700;
+  }
+  table.data-table td{ padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.data-table tbody tr:nth-child(even){ background:var(--surface-alt); }
+  table.data-table .num-cell{ font-family:'Quicksand',sans-serif; font-variant-numeric:tabular-nums; }
+
+  /* ---------- bar chart ---------- */
+  .chart-wrap{ display:flex; flex-direction:column; gap:10px; }
+  .bar-row{ display:flex; align-items:center; gap:12px; }
+  .bar-row .bname{ width:132px; flex:none; font-size:12.5px; color:var(--ink-muted); }
+  .bar-track{ flex:1; background:var(--surface-alt); border-radius:11px; height:22px; position:relative; overflow:hidden; }
+  .bar-fill{ height:100%; background:var(--accent); border-radius:11px; display:flex; align-items:center; }
+  .bar-val{ font-size:11.5px; font-weight:700; color:var(--accent-ink); padding-left:8px; font-family:'Quicksand',sans-serif; }
+  .bar-val.outside{ color:var(--ink); padding-left:6px; }
+
+  .numbered-list{ display:flex; flex-direction:column; gap:12px; }
+  .numbered-item{ display:flex; gap:12px; align-items:flex-start; }
+  .numbered-circle{
+    width:24px; height:24px; border-radius:50%; background:var(--accent-soft); color:var(--accent-strong);
+    font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; flex:none;
+  }
+
+  .section-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+
+  /* ---------- pollen click effect ---------- */
+  .pollen-particle{
+    position:fixed; top:0; left:0; pointer-events:none; z-index:9999; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #FFF3CE, var(--accent) 55%, var(--accent-strong) 100%);
+    box-shadow:0 0 5px rgba(255,194,41,.75);
+    animation-name:pollen-pop; animation-timing-function:cubic-bezier(.2,.7,.3,1); animation-fill-mode:forwards;
+  }
+  @keyframes pollen-pop{
+    0%{ transform:translate(-50%,-50%) rotate(0deg) scale(1); opacity:1; }
+    100%{ transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(.25); opacity:0; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pollen-particle{ display:none; }
+  }
+
+  /* ---------- loading ---------- */
+  .loading-wrap{
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:var(--bg); color:var(--ink-muted); font-size:13px;
+  }
+  .loading-wrap svg{ animation:bee-fly 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){ .loading-wrap svg{ animation:none; } }
+
+  /* ---------- comments ---------- */
+  .comment-list{ display:flex; flex-direction:column; gap:10px; max-height:220px; overflow-y:auto; padding-right:4px; }
+  .comment-item{ background:var(--surface-alt); border-radius:12px; padding:9px 12px; font-size:12.5px; }
+  .comment-item .who{ display:flex; justify-content:space-between; gap:8px; font-weight:700; margin-bottom:3px; color:var(--ink); }
+  .comment-item .when{ font-weight:400; color:var(--ink-faint); font-size:11px; }
+  .comment-item .txt{ color:var(--ink); white-space:pre-wrap; word-break:break-word; }
+  .comment-item .txt a{ word-break:break-all; }
+  .comment-form{ display:flex; gap:8px; align-items:flex-end; margin-top:8px; }
+  .comment-form textarea{ flex:1; min-height:44px; }
+
+  /* ---------- choice buttons ---------- */
+  .choice-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .choice-btn{
+    flex:1; min-width:120px; padding:12px; border-radius:14px; border:2px solid var(--border); background:var(--surface);
+    cursor:pointer; text-align:center; font-size:13px; font-weight:700; color:var(--ink-muted);
+  }
+  .choice-btn.active{ border-color:var(--accent-strong); background:var(--accent-soft); color:var(--accent-strong); }
+  .choice-btn:hover{ border-color:var(--accent); }
+
+  @media (max-width: 880px){
+    .shell{ flex-direction:column; }
+    .sidebar{ position:relative; height:auto; width:100%; flex:none; flex-direction:row; align-items:center; flex-wrap:wrap; }
+    .sidebar-spacer{ display:none; }
+    nav.mainnav{ flex-direction:row; flex-wrap:wrap; }
+    .sidebar-card{ display:none; }
+    .stat-row{ grid-template-columns:1fr 1fr; }
+    .two-col{ grid-template-columns:1fr; }
+    .form-grid{ grid-template-columns:1fr; }
+    .page{ padding:18px 16px 50px; }
+    .topbar{ padding:14px 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================= CONSTANTS ============================= */
+const STATUS_META = {
+  assigned:{label:'Giao việc', short:'Giao việc'},
+  in_progress:{label:'Đang thực hiện', short:'Đang làm'},
+  review:{label:'Đợi duyệt', short:'Đợi duyệt'},
+  fix:{label:'Cần sửa', short:'Cần sửa'},
+  fixed:{label:'Đã sửa', short:'Đã sửa'},
+  approved:{label:'Đã duyệt', short:'Đã duyệt'},
+};
+const STATUS_ORDER = ['assigned','in_progress','review','fix','fixed','approved'];
+const MONTH_NAMES = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+/* ============================= DATA LAYER (persisted via Artifact db) ============================= */
+let USERS = [];
+let TASKS = [];
+let SCHEDULE = {};      // userId -> {iso: 'work' | {leave:true, reason}}
+let LEAVE_REQUESTS = [];
+let dbApi = null;
+
+/* ============================= STATE ============================= */
+let state = {
+  authedUser:null,
+  page:'tasks',
+  taskFilters:{q:'', status:'', assignedBy:'', assignee:'', deadline:''},
+  openTaskId:null,
+  showTaskForm:false,
+  calMonth:new Date().getMonth(), calYear:new Date().getFullYear(),
+  bannerDismissed:false,
+  loginError:'',
+  submitModal:null,   // {taskId, mode:'submit'|'resubmit'}
+  fixModal:null,      // {taskId}
+  confirmModal:null,  // {title, message, confirmLabel, onConfirm, payload}
+  calDayModal:null,   // {date}
+  personModal:false,
+  resetPwModal:null,  // {uid, name}
+};
+
+/* ============================= HELPERS ============================= */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function todayDMY(){ const d=new Date(); return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}`; }
+function nowISOTime(){ return new Date().toISOString(); }
+function isOverdue(iso, status){ return status!=='approved' && iso < todayISO(); }
+function byId(id){ return USERS.find(u=>u.id===id) || {id, name:'(đã xoá)', role:'intern', title:''}; }
+function roleLabel(r){ return r==='admin'?'Quản trị':r==='manager'?'Quản lý':'Thực tập sinh'; }
+function initials(name){ const p=(name||'?').trim().split(' '); return (p[p.length-2]?.[0]||'')+(p[p.length-1]?.[0]||''); }
+function fmtDate(iso){ const parts=(iso||'').split('-'); if(parts.length<3) return iso||''; const [y,m,d]=parts; return `${d}/${m}`; }
+function fmtDateTime(iso){ try{ const d=new Date(iso); return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }catch(e){ return ''; } }
+function isManagerOrAdmin(u){ return u && (u.role==='admin'||u.role==='manager'); }
+function taskLabel(t){ return 'T-' + String(t.id).slice(-5).toUpperCase(); }
+function escapeHtml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function linkify(s){ return s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
+function defaultDeadline(){ const d=new Date(); d.setDate(d.getDate()+7); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function getNextWeekDates(){
+  const now = new Date();
+  const dow = now.getDay()===0 ? 7 : now.getDay(); // 1..7 Mon..Sun
+  const thisMonday = new Date(now); thisMonday.setDate(now.getDate()-(dow-1));
+  const nextMonday = new Date(thisMonday); nextMonday.setDate(thisMonday.getDate()+7);
+  const dates=[];
+  for(let i=0;i<7;i++){ const d=new Date(nextMonday); d.setDate(nextMonday.getDate()+i); dates.push(`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`); }
+  return dates;
+}
+
+/* ============================= SUPABASE SETUP ============================= */
+/* Fill this in with your own project's values (Supabase Dashboard → Project
+   Settings → API). The anon key is NOT a secret — access control is
+   enforced by Row Level Security policies + Auth, not by hiding this key. */
+const SUPABASE_URL = "https://dsrzydaaowflvfvaxfkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcnp5ZGFhb3dmbHZmdmF4ZmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzNzE5MDksImV4cCI6MjEwNDk0NzkwOX0.vVJMhRMf7b4wzqHIzcWepd3k5eBUx6c0id3I8i5fLFY";
+const LOGIN_EMAIL_DOMAIN = 'seoopshub.internal'; // must match supabase/functions/_shared/admin.ts
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function usernameToEmail(username){ return `${String(username).trim().toLowerCase()}@${LOGIN_EMAIL_DOMAIN}`; }
+async function callFn(name, payload){
+  const { data, error } = await sb.functions.invoke(name, { body: payload });
+  if(error){
+    let message = error.message || 'Có lỗi xảy ra.';
+    if(error.context && typeof error.context.json === 'function'){
+      try{ const body = await error.context.json(); if(body && body.error) message = body.error; }catch(e){}
+    }
+    throw new Error(message);
+  }
+  if(data && data.error) throw new Error(data.error);
+  return data;
+}
+
+/* ---- thin Firestore-shaped wrapper over Supabase Postgres tables ---- */
+/* Keeps every dbApi.collection(x).doc(id).set/update/delete()/.add() call
+   site below unchanged from the original design — only this adapter and
+   the subscription wiring differ between backends. */
+const FIELD_MAP = {
+  tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments' },
+  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined' },
+  schedule:{ days:'days' },
+  leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
+  sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at' },
+};
+const TABLE_NAME = { tasks:'tasks', users:'profiles', schedule:'schedule', leaveRequests:'leave_requests', sheetQueue:'sheet_queue' };
+const ID_COLUMN  = { tasks:'id', users:'id', schedule:'user_id', leaveRequests:'id', sheetQueue:'id' };
+
+function toRow(coll, data){
+  const map = FIELD_MAP[coll]; const row = {};
+  Object.keys(data||{}).forEach(k=>{ const col = map[k]; if(col) row[col] = data[k]; });
+  return row;
+}
+function fromRow(coll, row){
+  if(!row) return null;
+  const map = FIELD_MAP[coll]; const out = {};
+  Object.keys(map).forEach(k=>{ const col = map[k]; if(row[col]!==undefined) out[k] = row[col]; });
+  return out;
+}
+function newId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id'+Date.now()+Math.random().toString(36).slice(2)); }
+
+function createSupabaseDbApi(){
+  function collection(coll){
+    const table = TABLE_NAME[coll], idCol = ID_COLUMN[coll];
+    return {
+      doc(id){
+        const docId = id || newId();
+        return {
+          id: docId,
+          async get(){
+            const { data } = await sb.from(table).select('*').eq(idCol, docId).maybeSingle();
+            return { id:docId, exists:!!data, data:()=>fromRow(coll, data) };
+          },
+          async set(data){
+            const row = { [idCol]: docId, ...toRow(coll, data) };
+            const { error } = await sb.from(table).upsert(row, { onConflict: idCol });
+            if(error) throw error;
+          },
+          async update(data){
+            const { error } = await sb.from(table).update(toRow(coll, data)).eq(idCol, docId);
+            if(error) throw error;
+          },
+          async delete(){
+            const { error } = await sb.from(table).delete().eq(idCol, docId);
+            if(error) throw error;
+          },
+        };
+      },
+      async add(data){
+        const docId = newId();
+        const row = { [idCol]: docId, ...toRow(coll, data) };
+        const { error } = await sb.from(table).insert(row);
+        if(error) throw error;
+        return { id: docId };
+      },
+    };
+  }
+  return { collection };
+}
+dbApi = createSupabaseDbApi();
+
+/* ============================= INIT / SYNC ============================= */
+/* Unlike Firestore, Row Level Security here filters rows rather than
+   rejecting an unconstrained query outright — so every role can safely
+   subscribe to the whole table and simply receive fewer rows back. No
+   role-scoped queries needed. */
+let authReady = false;
+let profileReady = false;
+let currentSession = null;
+let realtimeChannels = [];
+
+function stopDataSubscriptions(){
+  realtimeChannels.forEach(ch=>{ try{ sb.removeChannel(ch); }catch(e){} });
+  realtimeChannels = [];
+  USERS = []; TASKS = []; SCHEDULE = {}; LEAVE_REQUESTS = [];
+}
+
+async function refreshUsers(){ const { data } = await sb.from('profiles').select('*'); USERS = (data||[]).map(r=>({ id:r.id, ...fromRow('users', r) })); }
+async function refreshTasks(){ const { data } = await sb.from('tasks').select('*'); TASKS = (data||[]).map(r=>({ id:r.id, ...fromRow('tasks', r) })); }
+async function refreshSchedule(){ const { data } = await sb.from('schedule').select('*'); const next={}; (data||[]).forEach(r=>{ next[r.user_id] = r.days||{}; }); SCHEDULE = next; }
+async function refreshLeave(){ const { data } = await sb.from('leave_requests').select('*'); LEAVE_REQUESTS = (data||[]).map(r=>({ id:r.id, ...fromRow('leaveRequests', r) })); }
+
+function subscribeTable(table, onChange){
+  const channel = sb.channel(`realtime:${table}:${Math.random().toString(36).slice(2)}`)
+    .on('postgres_changes', { event:'*', schema:'public', table }, onChange)
+    .subscribe();
+  realtimeChannels.push(channel);
+}
+
+function startDataSubscriptions(){
+  refreshUsers().then(render);
+  refreshTasks().then(render);
+  refreshSchedule().then(render);
+  refreshLeave().then(render);
+  subscribeTable('profiles',       ()=>refreshUsers().then(render));
+  subscribeTable('tasks',          ()=>refreshTasks().then(render));
+  subscribeTable('schedule',       ()=>refreshSchedule().then(render));
+  subscribeTable('leave_requests', ()=>refreshLeave().then(render));
+}
+
+async function loadProfileFor(uid){
+  const { data } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+  profileReady = true;
+  state.authedUser = data ? { id:uid, ...fromRow('users', data) } : null;
+}
+
+/* Reset transient UI state (current page, open modals, filters) whenever the
+   signed-in identity changes — otherwise a second person logging in on the
+   same browser after someone else logs out can land on a page their role
+   isn't even shown a nav item for (e.g. stuck on "people" as an intern). */
+function resetUiState(){
+  state.page = 'tasks';
+  state.taskFilters = {q:'', status:'', assignedBy:'', assignee:'', deadline:''};
+  state.openTaskId = null;
+  state.showTaskForm = false;
+  state.submitModal = null;
+  state.fixModal = null;
+  state.confirmModal = null;
+  state.calDayModal = null;
+  state.personModal = false;
+  state.resetPwModal = null;
+  state.loginError = '';
+}
+
+function initApp(){
+  sb.auth.onAuthStateChange(async (event, session)=>{
+    const prevUid = (currentSession && currentSession.user) ? currentSession.user.id : null;
+    const newUid = (session && session.user) ? session.user.id : null;
+    authReady = true;
+    currentSession = session;
+    if(prevUid===newUid && event!=='INITIAL_SESSION' && event!=='SIGNED_IN'){
+      render(); // e.g. TOKEN_REFRESHED for the same user — nothing to redo
+      return;
+    }
+    resetUiState();
+    stopDataSubscriptions();
+    if(newUid){
+      profileReady = false;
+      await loadProfileFor(newUid);
+      if(state.authedUser) startDataSubscriptions();
+      render();
+    } else {
+      profileReady = false;
+      state.authedUser = null;
+      render();
+    }
+  });
+}
+
+/* ============================= RENDER ROOT ============================= */
+function render(){
+  const app = document.getElementById('app');
+  const signedIn = currentSession && currentSession.user;
+  if(!authReady){ app.innerHTML = renderLoading(); return; }
+  if(signedIn && !profileReady){ app.innerHTML = renderLoading(); return; }
+  if(signedIn && profileReady && !state.authedUser){ app.innerHTML = renderNoProfile(); attachHandlers(); return; }
+  app.innerHTML = state.authedUser ? renderShell() : renderLogin();
+  attachHandlers();
+}
+function renderLoading(){
+  return `<div class="loading-wrap">${beeSVG(46)}<div>Đang tải dữ liệu…</div></div>`;
+}
+function renderNoProfile(){
+  return `<div class="loading-wrap">${beeSVG(46)}<div>Tài khoản chưa có hồ sơ trong hệ thống. Liên hệ Quản trị.</div>
+    <button class="btn btn-ghost" data-action="logout" style="margin-top:14px;">Đăng xuất</button></div>`;
+}
+
+/* ============================= LOGIN ============================= */
+function renderLogin(){
+  return `
+  <div class="login-wrap honeycomb-bg">
+    <div class="login-card">
+      <div class="login-mascot mascot-bee">${beeSVG(52)}</div>
+      <div class="login-brand">
+        <div class="brand-mark">${beeSVG(24)}</div>
+        <div>
+          <div class="brand-name" style="color:var(--ink)">SEO Ops Hub</div>
+          <div class="brand-sub" style="color:var(--ink-muted)">Nội bộ Team Content SEO</div>
+        </div>
+      </div>
+      <div class="login-title">Đăng nhập</div>
+      <div class="login-sub">Dùng tài khoản được cấp để vào hệ thống quản lý task &amp; lịch làm việc.</div>
+      <form class="login-form" id="loginForm">
+        <div class="field"><label>Tài khoản</label><input type="text" id="loginUser" placeholder="vd: lan.nguyen" autocomplete="username" required></div>
+        <div class="field"><label>Mật khẩu</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" required></div>
+        <div class="login-error">${state.loginError}</div>
+        <button type="submit" class="btn btn-primary" style="justify-content:center;">Đăng nhập</button>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ============================= ICONS ============================= */
+function navItemsFor(role){
+  const items = [ {key:'tasks', label:'Quản lý Task', icon:iconTasks()} ];
+  items.push({key:'calendar', label:'Lịch làm việc', icon:iconCalendar()});
+  if(role!=='intern') items.push({key:'reports', label:'Báo cáo', icon:iconReports()});
+  if(role==='admin') items.push({key:'people', label:'Quản lý nhân sự', icon:iconPeople()});
+  return items;
+}
+function iconTasks(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="7" rx="1.5"/><rect x="14" y="15" width="7" height="7" rx="1.5"/></svg>`; }
+function iconCalendar(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>`; }
+function iconReports(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>`; }
+function iconPeople(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="18" cy="8.5" r="2.4"/><path d="M16.5 14.2c2.6.5 4.2 2.4 4.2 5.3"/></svg>`; }
+
+function beeSVG(size, extraClass){
+  return `<svg class="${extraClass||''}" width="${size}" height="${size}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <ellipse class="wing" cx="34" cy="36" rx="16" ry="21" fill="#FFFFFF" opacity="0.8" stroke="#F2A900" stroke-width="1.5" transform="rotate(-18 34 36)"/>
+    <ellipse class="wing" cx="66" cy="36" rx="16" ry="21" fill="#FFFFFF" opacity="0.8" stroke="#F2A900" stroke-width="1.5" transform="rotate(18 66 36)"/>
+    <path d="M50 84 L44 93 L56 93 Z" fill="#121212"/>
+    <g clip-path="url(#beeBodyClip)">
+      <ellipse cx="50" cy="58" rx="27" ry="23" fill="#FFC229"/>
+      <rect x="22" y="44" width="56" height="9" fill="#121212"/>
+      <rect x="22" y="60" width="56" height="9" fill="#121212"/>
+      <rect x="22" y="76" width="56" height="10" fill="#121212"/>
+    </g>
+    <defs><clipPath id="beeBodyClip"><ellipse cx="50" cy="58" rx="27" ry="23"/></clipPath></defs>
+    <ellipse cx="50" cy="58" rx="27" ry="23" fill="none" stroke="#121212" stroke-width="3"/>
+    <circle cx="50" cy="29" r="15" fill="#121212"/>
+    <path d="M42 17 Q38 7 32 5" stroke="#121212" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="5" r="3" fill="#121212"/>
+    <path d="M58 17 Q62 7 68 5" stroke="#121212" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="68" cy="5" r="3" fill="#121212"/>
+    <ellipse cx="38" cy="34" rx="3.4" ry="2.1" fill="#FF9FB1" opacity="0.75"/>
+    <ellipse cx="62" cy="34" rx="3.4" ry="2.1" fill="#FF9FB1" opacity="0.75"/>
+    <circle cx="44" cy="28" r="4.3" fill="#FFFFFF"/>
+    <circle cx="56" cy="28" r="4.3" fill="#FFFFFF"/>
+    <circle cx="45" cy="29" r="2" fill="#121212"/>
+    <circle cx="57" cy="29" r="2" fill="#121212"/>
+    <path d="M45 35 Q50 39 55 35" stroke="#121212" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+
+/* ============================= SHELL ============================= */
+function renderShell(){
+  const u = state.authedUser;
+  const items = navItemsFor(u.role);
+  const pageTitles = {tasks:'Quản lý Task', calendar:'Lịch làm việc', reports:'Báo cáo công việc', people:'Quản lý nhân sự'};
+  const pageSubs = {
+    tasks: u.role==='intern' ? 'Các task được giao cho bạn' : 'Toàn bộ task của team, theo trạng thái',
+    calendar: u.role==='intern' ? 'Đăng ký ngày làm việc / nghỉ phép của bạn' : 'Lịch làm việc toàn team & duyệt nghỉ phép',
+    reports: 'Tổng hợp hiệu suất theo tuần',
+    people: 'Thêm / sửa / xoá tài khoản Quản lý & Thực tập sinh',
+  };
+  return `
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">${beeSVG(24)}</div>
+        <div><div class="brand-name">SEO Ops Hub</div><div class="brand-sub">Team Content SEO</div></div>
+      </div>
+      <nav class="mainnav">
+        ${items.map(it=>`<button class="navlink ${state.page===it.key?'active':''}" data-nav="${it.key}">${it.icon}${it.label}</button>`).join('')}
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-card">
+        <div class="who">
+          <div class="avatar">${initials(u.name)}</div>
+          <div><div class="who-name">${u.name}</div><div class="who-role">${u.title||roleLabel(u.role)}</div></div>
+        </div>
+        <button class="logout-btn" data-action="logout">Đăng xuất</button>
+      </div>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <div><h1>${pageTitles[state.page]}</h1><div class="sub">${pageSubs[state.page]}</div></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="flying-bee">${beeSVG(26)}</span>
+          <span class="role-badge role-${u.role}">${roleLabel(u.role)}</span>
+        </div>
+      </div>
+      <div class="page"><div class="page-inner">
+        ${state.page==='tasks'?renderTasksPage(u):''}
+        ${state.page==='calendar'?renderCalendarPage(u):''}
+        ${state.page==='reports'?renderReportsPage(u):''}
+        ${state.page==='people'?renderPeoplePage(u):''}
+      </div></div>
+    </div>
+  </div>
+  ${state.openTaskId ? renderTaskModal(getTaskById(state.openTaskId), u) : ''}
+  ${state.showTaskForm ? renderTaskFormModal(u) : ''}
+  ${state.submitModal ? renderSubmitModal() : ''}
+  ${state.fixModal ? renderFixModal() : ''}
+  ${state.confirmModal ? renderConfirmModal() : ''}
+  ${state.calDayModal ? renderCalDayModal() : ''}
+  ${state.personModal ? renderPersonModal() : ''}
+  `;
+}
+
+/* ============================= TASKS PAGE ============================= */
+function getTaskById(id){ return TASKS.find(t=>t.id===id); }
+function visibleTasks(u){
+  let list = TASKS.slice();
+  if(u.role==='intern') list = list.filter(t=>t.assignee===u.id);
+  const f = state.taskFilters;
+  if(f.q){
+    const q = f.q.toLowerCase();
+    list = list.filter(t=>(t.keyword||'').toLowerCase().includes(q) || taskLabel(t).toLowerCase().includes(q));
+  }
+  if(f.status) list = list.filter(t=>t.status===f.status);
+  if(f.assignedBy) list = list.filter(t=>t.assignedBy===f.assignedBy);
+  if(f.assignee) list = list.filter(t=>t.assignee===f.assignee);
+  if(f.deadline) list = list.filter(t=>t.deadline===f.deadline);
+  return list.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+}
+function renderTasksPage(u){
+  const list = visibleTasks(u);
+  const inProgressCount = list.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
+  const reviewCount = list.filter(t=>t.status==='review').length;
+  const overdueCount = list.filter(t=>isOverdue(t.deadline,t.status)).length;
+  const managers = USERS.filter(x=>x.role==='manager'||x.role==='admin');
+  const interns = USERS.filter(x=>x.role==='intern');
+
+  return `
+    <div class="stat-row">
+      <div class="stat-card"><div class="label">Tổng task${u.role==='intern'?' của bạn':''}</div><div class="value num">${list.length}</div></div>
+      <div class="stat-card"><div class="label">Đang xử lý</div><div class="value accent num">${inProgressCount}</div></div>
+      <div class="stat-card"><div class="label">Đợi duyệt</div><div class="value num">${reviewCount}</div></div>
+      <div class="stat-card"><div class="label">Trễ deadline</div><div class="value ${overdueCount>0?'danger':''} num">${overdueCount}</div></div>
+    </div>
+
+    <div class="section-title">
+      <div></div>
+      ${u.role!=='intern' ? `<button class="btn btn-primary" data-action="openTaskForm">+ Tạo Task</button>` : ''}
+    </div>
+
+    <div class="filter-bar">
+      <div class="field grow-search"><label>Tìm theo từ khoá / mã task</label><input type="text" id="fQ" placeholder="vd: wifi, T-104..." value="${escapeHtml(state.taskFilters.q)}"></div>
+      <div class="field"><label>Trạng thái</label>
+        <select id="fStatus"><option value="">Tất cả</option>${STATUS_ORDER.map(s=>`<option value="${s}" ${state.taskFilters.status===s?'selected':''}>${STATUS_META[s].label}</option>`).join('')}</select>
+      </div>
+      ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${managers.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
+      ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${interns.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
+      <div class="field"><label>Deadline</label><input type="date" id="fDeadline" value="${state.taskFilters.deadline}"></div>
+      <button class="btn btn-ghost btn-sm" data-action="clearFilters">Xoá lọc</button>
+    </div>
+
+    ${interns.length===0 && u.role!=='intern' ? `<div class="banner info"><div><strong>Chưa có thực tập sinh nào.</strong> Vào mục "Quản lý nhân sự" để thêm người trước khi tạo task.</div></div>` : ''}
+
+    <div class="scrollx"><div class="board">
+      ${STATUS_ORDER.map(s=>renderBoardColumn(s, list.filter(t=>t.status===s), u)).join('')}
+    </div></div>
+  `;
+}
+function renderBoardColumn(status, tasks, u){
+  return `
+  <div class="board-col">
+    <div class="board-col-head"><span class="dot" style="background:var(--st-${status})"></span><h3>${STATUS_META[status].label}</h3><span class="count">${tasks.length}</span></div>
+    <div class="board-col-body">
+      ${tasks.length? tasks.map(t=>renderCard(t,u)).join('') : `<div class="empty-col">${beeSVG(30)}<span>Chưa có task ở đây</span></div>`}
+    </div>
+  </div>`;
+}
+function renderCard(t,u){
+  const a = byId(t.assignee);
+  const overdue = isOverdue(t.deadline, t.status);
+  return `
+  <div class="card" data-opentask="${t.id}">
+    <div class="card-top">
+      <span class="tag ${t.type==='New'?'new':''}">${t.type}</span>
+      <span class="num" style="font-size:10.5px;color:var(--ink-faint)">${taskLabel(t)}</span>
+    </div>
+    <div class="card-title">${escapeHtml(t.keyword)}</div>
+    <div class="card-meta">
+      <div class="card-assignee"><span class="avatar">${initials(a.name)}</span>${escapeHtml(a.name.split(' ').slice(-2).join(' '))}</div>
+      <span class="card-deadline ${overdue?'overdue':''}">${overdue?'⚠ ':''}${fmtDate(t.deadline)}</span>
+    </div>
+  </div>`;
+}
+
+/* ---- Task detail modal ---- */
+function renderTaskModal(t,u){
+  if(!t) return '';
+  const a = byId(t.assignee), b = byId(t.assignedBy);
+  const mine = u.id===t.assignee;
+  const canManage = isManagerOrAdmin(u);
+  let actions = '';
+  if(mine && !canManage){
+    if(t.status==='assigned') actions = `<button class="btn btn-primary" data-taskaction="start">Bắt đầu làm</button>`;
+    if(t.status==='in_progress') actions = `<button class="btn btn-primary" data-taskaction="submit">Nộp bài — chuyển Đợi duyệt</button>`;
+    if(t.status==='fix') actions = `<button class="btn btn-primary" data-taskaction="resubmit">Đã sửa xong</button>`;
+  }
+  if(canManage){
+    if(t.status==='review'){
+      actions = `<button class="btn" style="border-color:var(--st-fix);color:var(--st-fix);" data-taskaction="requestfix">Cần sửa</button>
+                 <button class="btn btn-primary" data-taskaction="approve">Duyệt đạt</button>`;
+    }
+    actions += `<button class="btn btn-ghost btn-sm" data-action="askDeleteTask" data-taskid="${t.id}" style="color:var(--danger);margin-left:auto;">Xoá task</button>`;
+  }
+  const comments = t.comments||[];
+  return `
+  <div class="modal-bg" data-close="modal">
+    <div class="modal" data-stop="1">
+      <div class="modal-head">
+        <h2>${taskLabel(t)} · ${STATUS_META[t.status].label}</h2>
+        <button class="modal-close" data-action="closeModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row"><div class="k">Từ khoá</div><div class="v"><b>${escapeHtml(t.keyword)}</b></div></div>
+        <div class="detail-row"><div class="k">Phân loại</div><div class="v"><span class="tag ${t.type==='New'?'new':''}">${t.type}</span></div></div>
+        <div class="detail-row"><div class="k">Nhân sự</div><div class="v">${escapeHtml(a.name)}</div></div>
+        <div class="detail-row"><div class="k">Người giao</div><div class="v">${escapeHtml(b.name)}</div></div>
+        <div class="detail-row"><div class="k">Deadline</div><div class="v">${t.deadline}${isOverdue(t.deadline,t.status)?' <span style="color:var(--danger);font-weight:700;">— đã trễ</span>':''}</div></div>
+        <div class="detail-row"><div class="k">Mô tả</div><div class="v">${escapeHtml(t.desc)}</div></div>
+        <div class="detail-row"><div class="k">File</div><div class="v">${t.fileLink?`<a href="${escapeHtml(t.fileLink)}" target="_blank" rel="noopener">${escapeHtml(t.fileLink)}</a>`:'<span style="color:var(--ink-faint)">Chưa có</span>'}</div></div>
+        ${t.note?`<div class="detail-row"><div class="k">Ghi chú sửa</div><div class="v" style="color:var(--st-fix)">${escapeHtml(t.note)}</div></div>`:''}
+        <div class="detail-row"><div class="k">Lịch sử</div><div class="v history">${(t.history||[]).map(h=>`<div class="history-item"><span class="t">${h.t}</span>${escapeHtml(h.text)}</div>`).join('')}</div></div>
+        <div class="detail-row"><div class="k">Bình luận</div><div class="v">
+          <div class="comment-list">
+            ${comments.length ? comments.map(c=>`
+              <div class="comment-item">
+                <div class="who">${escapeHtml(c.authorName)}<span class="when">${fmtDateTime(c.createdAt)}</span></div>
+                <div class="txt">${linkify(escapeHtml(c.text))}</div>
+              </div>`).join('') : '<div style="font-size:12px;color:var(--ink-faint)">Chưa có bình luận nào.</div>'}
+          </div>
+          <div class="comment-form">
+            <textarea id="newCommentText" placeholder="Viết bình luận, dán link Docs nếu cần..."></textarea>
+            <button type="button" class="btn btn-primary btn-sm" data-action="addComment" data-taskid="${t.id}">Gửi</button>
+          </div>
+        </div></div>
+      </div>
+      <div class="modal-foot">${actions || '<span style="font-size:12.5px;color:var(--ink-faint);">Không có hành động khả dụng.</span>'}</div>
+    </div>
+  </div>`;
+}
+
+/* ---- Submit / resubmit link modal ---- */
+function renderSubmitModal(){
+  const sm = state.submitModal; if(!sm) return '';
+  const t = getTaskById(sm.taskId); if(!t) return '';
+  const isResubmit = sm.mode==='resubmit';
+  return `
+  <div class="modal-bg" data-close="submitmodal">
+    <div class="modal" data-stop="1" style="max-width:460px;">
+      <div class="modal-head"><h2>${isResubmit? 'Đã sửa xong' : 'Nộp bài — chuyển Đợi duyệt'}</h2><button class="modal-close" data-action="closeSubmitModal">✕</button></div>
+      <form id="submitLinkForm">
+        <div class="modal-body">
+          <div class="field"><label>Link Google Docs bài viết</label><input type="url" id="submitLink" required placeholder="https://docs.google.com/document/d/..." value="${escapeHtml(t.fileLink||'')}"></div>
+          <div class="field"><label>Ghi chú thêm (không bắt buộc)</label><textarea id="submitNote" placeholder="Vd: đã bổ sung phần FAQ theo yêu cầu..."></textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeSubmitModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Gửi &amp; chuyển Đợi duyệt</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Request-fix modal ---- */
+function renderFixModal(){
+  const fm = state.fixModal; if(!fm) return '';
+  const t = getTaskById(fm.taskId); if(!t) return '';
+  return `
+  <div class="modal-bg" data-close="fixmodal">
+    <div class="modal" data-stop="1" style="max-width:460px;">
+      <div class="modal-head"><h2>Yêu cầu sửa bài</h2><button class="modal-close" data-action="closeFixModal">✕</button></div>
+      <form id="fixForm">
+        <div class="modal-body">
+          <div class="field"><label>Ghi chú ngắn lý do cần sửa</label><textarea id="fixNote" required placeholder="Vd: bổ sung bảng giá tháng mới, chi tiết đã comment trong Docs"></textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeFixModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Gửi yêu cầu sửa</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Generic confirm modal ---- */
+function renderConfirmModal(){
+  const cm = state.confirmModal; if(!cm) return '';
+  return `
+  <div class="modal-bg" data-close="confirmmodal">
+    <div class="modal" data-stop="1" style="max-width:380px;">
+      <div class="modal-head"><h2>${escapeHtml(cm.title)}</h2><button class="modal-close" data-action="closeConfirmModal">✕</button></div>
+      <div class="modal-body"><div style="font-size:13.5px;">${escapeHtml(cm.message)}</div></div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="closeConfirmModal">Huỷ</button>
+        <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);box-shadow:none;" data-action="confirmYes">${escapeHtml(cm.confirmLabel||'Xoá')}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---- Task create form modal ---- */
+function renderTaskFormModal(u){
+  const interns = USERS.filter(x=>x.role==='intern');
+  return `
+  <div class="modal-bg" data-close="taskform">
+    <div class="modal" data-stop="1">
+      <div class="modal-head"><h2>Tạo Task mới</h2><button class="modal-close" data-action="closeTaskForm">✕</button></div>
+      <form id="newTaskForm">
+        <div class="modal-body">
+          <div class="field"><label>Keyword / Chủ đề</label><input type="text" id="ntKeyword" required placeholder="vd: Cách chọn gói cước phù hợp"></div>
+          <div class="form-grid">
+            <div class="field"><label>Phân loại bài</label><select id="ntType"><option value="New">New</option><option value="Audit">Audit</option></select></div>
+            <div class="field"><label>Nhân sự thực hiện</label><select id="ntAssignee" ${interns.length===0?'disabled':''}>${interns.length===0?'<option>Chưa có thực tập sinh</option>':interns.map(i=>`<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label>Deadline</label><input type="date" id="ntDeadline" required value="${defaultDeadline()}"></div>
+          <div class="field"><label>Mô tả công việc</label><textarea id="ntDesc" placeholder="Yêu cầu nội dung, cấu trúc, lưu ý..."></textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeTaskForm">Huỷ</button>
+          <button type="submit" class="btn btn-primary" ${interns.length===0?'disabled':''}>Giao việc</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ============================= CALENDAR PAGE ============================= */
+function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+function dowMonFirst(y,m,d){ const j = new Date(y,m,d).getDay(); return j===0?6:j-1; }
+function isoOf(y,m,d){ return `${y}-${pad2(m+1)}-${pad2(d)}`; }
+
+function renderCalendarPage(u){
+  const y = state.calYear, m = state.calMonth;
+  const total = daysInMonth(y,m);
+  const firstDow = dowMonFirst(y,m,1);
+  const interns = USERS.filter(x=>x.role==='intern');
+  const isIntern = u.role==='intern';
+
+  const nextWeekDates = getNextWeekDates();
+  const registeredNextWeek = isIntern && nextWeekDates.some(d => SCHEDULE[u.id] && SCHEDULE[u.id][d]);
+  const banner = (isIntern && !registeredNextWeek && !state.bannerDismissed) ? `
+    <div class="banner">
+      <div>🔔 <strong>Nhắc đăng ký lịch làm việc:</strong> Bạn chưa đăng ký lịch cho tuần ${fmtDate(nextWeekDates[0])}–${fmtDate(nextWeekDates[6])}. Vào các ô ngày bên dưới để đánh dấu Làm việc / Nghỉ phép.
+        <div style="font-size:11.5px;color:var(--ink-faint);margin-top:4px;">Nhắc tự động mỗi Chủ nhật cho đến khi bạn đăng ký.</div>
+      </div>
+      <button class="x" data-action="dismissBanner">✕</button>
+    </div>` : '';
+
+  let cells = '';
+  for(let i=0;i<firstDow;i++) cells += `<div class="cal-cell out"></div>`;
+  for(let d=1; d<=total; d++){
+    const iso = isoOf(y,m,d);
+    let marks = '';
+    let selfTag = '';
+    if(isIntern){
+      const mark = SCHEDULE[u.id] && SCHEDULE[u.id][iso];
+      if(mark==='work') selfTag = `<span class="cal-self-tag work">Làm việc</span>`;
+      else if(mark && mark.leave) selfTag = `<span class="cal-self-tag leave" title="${escapeHtml(mark.reason)}">Nghỉ phép</span>`;
+      else selfTag = `<span class="cal-self-tag none">Chưa đăng ký</span>`;
+    } else {
+      interns.forEach(iu=>{
+        const mark = SCHEDULE[iu.id] && SCHEDULE[iu.id][iso];
+        if(mark==='work') marks += `<span class="cal-mark work" title="${escapeHtml(iu.name)} — Làm việc">${initials(iu.name)}</span>`;
+        else if(mark && mark.leave) marks += `<span class="cal-mark leave" title="${escapeHtml(iu.name)} — Nghỉ: ${escapeHtml(mark.reason)}">${initials(iu.name)}</span>`;
+      });
+    }
+    cells += `<div class="cal-cell ${isIntern?'clickable':''}" ${isIntern?`data-calday="${iso}"`:''}>
+      <div class="cal-daynum">${d}</div>
+      ${isIntern? '' : `<div class="cal-marks">${marks}</div>`}
+      ${isIntern? selfTag : ''}
+    </div>`;
+  }
+
+  const pendingForManager = !isIntern ? LEAVE_REQUESTS.filter(r=>r.status==='pending') : [];
+
+  return `
+    ${banner}
+    <div class="two-col">
+      <div>
+        <div class="cal-head">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="btn btn-ghost btn-sm" data-action="calPrev">◀</button>
+            <h3>${MONTH_NAMES[m]} ${y}</h3>
+            <button class="btn btn-ghost btn-sm" data-action="calNext">▶</button>
+          </div>
+          <div class="cal-legend">
+            <span><i style="background:var(--st-approved-soft);border:1px solid var(--st-approved)"></i>Làm việc</span>
+            <span><i style="background:var(--st-fix-soft);border:1px solid var(--st-fix)"></i>Nghỉ phép</span>
+          </div>
+        </div>
+        <div class="cal-grid">
+          ${['T2','T3','T4','T5','T6','T7','CN'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+          ${cells}
+        </div>
+        ${isIntern? `<div style="margin-top:12px;font-size:12px;color:var(--ink-faint)">Bấm vào 1 ngày để chọn Làm việc / Nghỉ phép (kèm lý do).</div>` : ''}
+      </div>
+      <div class="panel">
+        <h3>${isIntern? 'Trạng thái đăng ký của bạn' : 'Yêu cầu nghỉ phép chờ duyệt'}</h3>
+        ${isIntern ? `
+          <div style="font-size:12.5px;color:var(--ink-muted);line-height:1.7;">
+            Bạn chỉ xem và chỉnh sửa được lịch của chính mình. Người quản lý sẽ duyệt các yêu cầu nghỉ phép.
+          </div>` : (pendingForManager.length? `
+          <div class="leave-req">
+            ${pendingForManager.map(r=>{ const ru=byId(r.userId); return `
+              <div class="leave-req-item">
+                <div class="top"><b>${escapeHtml(ru.name)}</b><span class="num" style="font-size:12px;color:var(--ink-faint)">${fmtDate(r.date)}</span></div>
+                <div class="reason">Lý do: ${escapeHtml(r.reason)}</div>
+                <div class="leave-req-actions">
+                  <button class="btn btn-sm btn-primary" data-leaveaction="approve" data-leaveid="${r.id}">Duyệt</button>
+                  <button class="btn btn-sm btn-ghost" style="color:var(--danger)" data-leaveaction="reject" data-leaveid="${r.id}">Từ chối</button>
+                </div>
+              </div>`; }).join('')}
+          </div>` : `<div style="font-size:12.5px;color:var(--ink-faint)">Không có yêu cầu nào đang chờ.</div>`)}
+      </div>
+    </div>
+  `;
+}
+
+/* ---- Calendar day modal ---- */
+function renderCalDayModal(){
+  const cd = state.calDayModal; if(!cd) return '';
+  const current = SCHEDULE[state.authedUser.id] && SCHEDULE[state.authedUser.id][cd.date];
+  const currentChoice = current==='work' ? 'work' : (current && current.leave ? 'leave' : 'none');
+  return `
+  <div class="modal-bg" data-close="caldaymodal">
+    <div class="modal" data-stop="1" style="max-width:420px;">
+      <div class="modal-head"><h2>Ngày ${fmtDate(cd.date)}</h2><button class="modal-close" data-action="closeCalDayModal">✕</button></div>
+      <form id="calDayForm">
+        <div class="modal-body">
+          <div class="choice-row">
+            <button type="button" class="choice-btn ${currentChoice==='work'?'active':''}" data-daychoice="work">✅ Làm việc</button>
+            <button type="button" class="choice-btn ${currentChoice==='leave'?'active':''}" data-daychoice="leave">🌴 Nghỉ phép</button>
+            <button type="button" class="choice-btn ${currentChoice==='none'?'active':''}" data-daychoice="none">Bỏ đánh dấu</button>
+          </div>
+          <input type="hidden" id="dayChoiceValue" value="${currentChoice}">
+          <div class="field" id="leaveReasonField" style="${currentChoice==='leave'?'':'display:none;'}">
+            <label>Lý do nghỉ phép</label><textarea id="leaveReason">${escapeHtml((current&&current.reason)||'')}</textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeCalDayModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Lưu</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ============================= REPORTS PAGE ============================= */
+function renderReportsPage(u){
+  const interns = USERS.filter(x=>x.role==='intern');
+  const totalTasks = TASKS.length;
+  const approved = TASKS.filter(t=>t.status==='approved').length;
+  const overdue = TASKS.filter(t=>isOverdue(t.deadline,t.status)).length;
+  const submittedOnce = TASKS.filter(t=>(t.history||[]).some(h=>h.text.includes('Đợi duyệt'))).length;
+  const firstPassRate = submittedOnce ? Math.round((TASKS.filter(t=>t.status==='approved' && !(t.history||[]).some(h=>h.text.includes('yêu cầu sửa'))).length / submittedOnce) * 100) : 0;
+
+  const perIntern = interns.map(iu=>{
+    const own = TASKS.filter(t=>t.assignee===iu.id);
+    const done = own.filter(t=>t.status==='approved').length;
+    const late = own.filter(t=>isOverdue(t.deadline,t.status)).length;
+    const doing = own.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
+    const wasFixed = own.filter(t=>(t.history||[]).some(h=>h.text.includes('yêu cầu sửa'))).length;
+    const submitted = own.filter(t=>(t.history||[]).some(h=>h.text.includes('Đợi duyệt'))).length;
+    const rate = submitted? Math.round(((submitted-wasFixed)/submitted)*100) : 0;
+    return {iu, total:own.length, done, late, doing, rate};
+  });
+  const maxDone = Math.max(1, ...perIntern.map(p=>p.done));
+  const watchItems = [];
+  if(overdue>0) watchItems.push(`${overdue} task đang trễ deadline, ưu tiên nhắc nhân sự phụ trách.`);
+  const stuckFix = TASKS.filter(t=>t.status==='fix').length;
+  if(stuckFix>0) watchItems.push(`${stuckFix} task đang ở trạng thái "Cần sửa", theo dõi để nhân sự cập nhật lại.`);
+  watchItems.push(`Tỷ lệ đạt duyệt lần đầu ${firstPassRate}% — ${firstPassRate>=80?'đang tốt, duy trì brief rõ ràng.':'thấp hơn mục tiêu 80%, nên rà lại brief giao việc.'}`);
+
+  return `
+    <div class="stat-row">
+      <div class="stat-card"><div class="label">Tổng task</div><div class="value num">${totalTasks}</div></div>
+      <div class="stat-card"><div class="label">Hoàn thành (đã duyệt)</div><div class="value success num">${approved}</div></div>
+      <div class="stat-card"><div class="label">Trễ deadline</div><div class="value ${overdue>0?'danger':''} num">${overdue}</div></div>
+      <div class="stat-card"><div class="label">Tỷ lệ đạt duyệt lần đầu</div><div class="value accent num">${firstPassRate}%</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <h3>Task hoàn thành theo nhân sự</h3>
+        ${perIntern.length? `<div class="chart-wrap">
+          ${perIntern.map(p=>`
+            <div class="bar-row">
+              <div class="bname">${escapeHtml(p.iu.name)}</div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:${Math.max(6,(p.done/maxDone)*100)}%">
+                  <span class="bar-val">${p.done}</span>
+                </div>
+              </div>
+            </div>`).join('')}
+        </div>` : `<div style="font-size:12.5px;color:var(--ink-faint)">Chưa có thực tập sinh nào.</div>`}
+      </div>
+      <div class="panel">
+        <h3>Điểm cần theo dõi tiếp</h3>
+        <div class="numbered-list">
+          ${watchItems.map((w,i)=>`<div class="numbered-item"><div class="numbered-circle">${i+1}</div><div>${w}</div></div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3>Chi tiết theo thực tập sinh</h3>
+      <div class="scrollx"><table class="data-table">
+        <thead><tr><th>Nhân sự</th><th>Tổng giao</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Trễ hạn</th><th>Tỷ lệ đạt lần đầu</th></tr></thead>
+        <tbody>
+          ${perIntern.length? perIntern.map(p=>`<tr>
+            <td>${escapeHtml(p.iu.name)}</td>
+            <td class="num-cell">${p.total}</td>
+            <td class="num-cell" style="color:var(--success);font-weight:700;">${p.done}</td>
+            <td class="num-cell">${p.doing}</td>
+            <td class="num-cell" style="color:${p.late>0?'var(--danger)':'inherit'};font-weight:${p.late>0?'700':'400'};">${p.late}</td>
+            <td class="num-cell">${p.rate}%</td>
+          </tr>`).join('') : `<tr><td colspan="6" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+/* ============================= PEOPLE PAGE (Admin) ============================= */
+function renderPeoplePage(u){
+  return `
+    <div class="section-title">
+      <div style="font-size:12.5px;color:var(--ink-muted);max-width:520px;">Chỉ Quản trị mới thấy trang này. Mật khẩu đặt ở đây do bạn tự quản lý và gửi lại cho từng người.</div>
+      <button class="btn btn-primary" data-action="openPersonModal">+ Thêm nhân sự</button>
+    </div>
+    <div class="panel">
+      <div class="scrollx"><table class="data-table">
+        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản</th><th>Ngày tham gia</th><th></th></tr></thead>
+        <tbody>
+          ${USERS.map(p=>`<tr>
+            <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(p.name)}</span>${escapeHtml(p.name)}</td>
+            <td>
+              <select data-rolechange="${p.id}" data-prevrole="${p.role}" ${p.id===u.id?'disabled':''} style="border:1px solid var(--border);border-radius:10px;padding:4px 8px;background:var(--surface);color:var(--ink);font-size:12.5px;">
+                <option value="admin" ${p.role==='admin'?'selected':''}>Quản trị</option>
+                <option value="manager" ${p.role==='manager'?'selected':''}>Quản lý</option>
+                <option value="intern" ${p.role==='intern'?'selected':''}>Thực tập sinh</option>
+              </select>
+            </td>
+            <td>${escapeHtml(p.title||'')}</td>
+            <td class="num-cell">${escapeHtml(p.username)}</td>
+            <td class="num-cell">${p.joined||''}</td>
+            <td style="display:flex;gap:6px;justify-content:flex-end;">
+              <button class="btn btn-ghost btn-sm" data-resetpw="${p.id}" data-personname="${escapeHtml(p.name)}">Đặt lại mật khẩu</button>
+              ${p.id===u.id?'':`<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-removeuser="${p.id}">Xoá</button>`}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn.</div>
+    </div>
+    ${state.resetPwModal ? renderResetPwModal() : ''}
+  `;
+}
+function renderResetPwModal(){
+  const m = state.resetPwModal; if(!m) return '';
+  return `
+  <div class="modal-bg" data-close="resetpwmodal">
+    <div class="modal" data-stop="1" style="max-width:420px;">
+      <div class="modal-head"><h2>Đặt lại mật khẩu</h2><button class="modal-close" data-action="closeResetPwModal">✕</button></div>
+      <form id="resetPwForm">
+        <div class="modal-body">
+          <div style="font-size:13px;">Mật khẩu mới cho <b>${m.name}</b>:</div>
+          <div class="field"><input type="text" id="newPwInput" required minlength="6" placeholder="Tối thiểu 6 ký tự"></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeResetPwModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Xác nhận</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Add person modal ---- */
+function renderPersonModal(){
+  if(!state.personModal) return '';
+  return `
+  <div class="modal-bg" data-close="personmodal">
+    <div class="modal" data-stop="1">
+      <div class="modal-head"><h2>Thêm nhân sự</h2><button class="modal-close" data-action="closePersonModal">✕</button></div>
+      <form id="personForm">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Họ tên</label><input type="text" id="pName" required></div>
+            <div class="field"><label>Vai trò</label>
+              <select id="pRole">
+                <option value="intern">Thực tập sinh</option>
+                <option value="manager">Quản lý</option>
+                <option value="admin">Quản trị</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Chức danh</label><input type="text" id="pTitle" placeholder="vd: Thực tập sinh Content"></div>
+            <div class="field"><label>Tài khoản đăng nhập</label><input type="text" id="pUsername" required placeholder="vd: an.nguyen"></div>
+          </div>
+          <div class="field"><label>Mật khẩu</label><input type="text" id="pPassword" required placeholder="Đặt mật khẩu ban đầu"></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closePersonModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Thêm nhân sự</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ============================= EVENT HANDLERS ============================= */
+function attachHandlers(){
+  const app = document.getElementById('app');
+
+  const loginForm = document.getElementById('loginForm');
+  if(loginForm){
+    loginForm.addEventListener('submit', async e=>{
+      e.preventDefault();
+      const uname = document.getElementById('loginUser').value.trim();
+      const pass = document.getElementById('loginPass').value;
+      const btn = loginForm.querySelector('button[type="submit"]');
+      state.loginError=''; if(btn) btn.disabled = true;
+      const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(uname), password: pass });
+      if(error){
+        const msg = String(error.message||'');
+        state.loginError = msg.toLowerCase().includes('invalid login credentials') ? 'Sai tài khoản hoặc mật khẩu.' : ('Lỗi đăng nhập: ' + msg);
+        render();
+      }
+      if(btn) btn.disabled = false;
+    });
+  }
+
+  app.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click', ()=>{ state.page=b.dataset.nav; state.openTaskId=null; render(); }));
+  const logoutBtn = app.querySelector('[data-action="logout"]');
+  if(logoutBtn) logoutBtn.addEventListener('click', ()=>{ sb.auth.signOut(); });
+
+  app.querySelectorAll('[data-opentask]').forEach(c=>c.addEventListener('click', ()=>{ state.openTaskId=c.dataset.opentask; render(); }));
+  const closeModalBtn = app.querySelector('[data-action="closeModal"]');
+  if(closeModalBtn) closeModalBtn.addEventListener('click', ()=>{ state.openTaskId=null; render(); });
+  app.querySelectorAll('[data-close="modal"]').forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ state.openTaskId=null; render(); } }));
+
+  const openTaskFormBtn = app.querySelector('[data-action="openTaskForm"]');
+  if(openTaskFormBtn) openTaskFormBtn.addEventListener('click', ()=>{ state.showTaskForm=true; render(); });
+  app.querySelectorAll('[data-action="closeTaskForm"]').forEach(b=>b.addEventListener('click', ()=>{ state.showTaskForm=false; render(); }));
+  app.querySelectorAll('[data-close="taskform"]').forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ state.showTaskForm=false; render(); } }));
+
+  const newTaskForm = document.getElementById('newTaskForm');
+  if(newTaskForm) newTaskForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const assignee = document.getElementById('ntAssignee').value;
+    if(!assignee) return;
+    await dbApi.collection('tasks').add({
+      keyword: document.getElementById('ntKeyword').value,
+      type: document.getElementById('ntType').value,
+      assignee, assignedBy: state.authedUser.id,
+      deadline: document.getElementById('ntDeadline').value,
+      createdAt: todayISO(), status:'assigned', fileLink:'',
+      desc: document.getElementById('ntDesc').value || '(không có mô tả thêm)',
+      history:[{t:todayDMY(), text:`Giao việc cho ${byId(assignee).name}`}],
+      comments:[],
+    });
+    state.showTaskForm=false; render();
+  });
+
+  app.querySelectorAll('[data-taskaction]').forEach(b=>b.addEventListener('click', async ()=>{
+    const t = getTaskById(state.openTaskId); if(!t) return;
+    const act = b.dataset.taskaction;
+    if(act==='start'){
+      const newHistory=[...(t.history||[]), {t:todayDMY(), text:'Chuyển "Đang thực hiện"'}];
+      await dbApi.collection('tasks').doc(t.id).update({status:'in_progress', history:newHistory});
+    }
+    if(act==='submit'){ state.submitModal={taskId:t.id, mode:'submit'}; render(); return; }
+    if(act==='resubmit'){ state.submitModal={taskId:t.id, mode:'resubmit'}; render(); return; }
+    if(act==='requestfix'){ state.fixModal={taskId:t.id}; render(); return; }
+    if(act==='approve'){
+      const newHistory=[...(t.history||[]), {t:todayDMY(), text:'Quản lý duyệt đạt'}];
+      await dbApi.collection('tasks').doc(t.id).update({status:'approved', history:newHistory});
+    }
+  }));
+
+  app.querySelectorAll('[data-action="addComment"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const ta = document.getElementById('newCommentText'); const text=(ta.value||'').trim(); if(!text) return;
+    const t = getTaskById(b.dataset.taskid); if(!t) return;
+    const comment = {id:'c'+Date.now(), authorId:state.authedUser.id, authorName:state.authedUser.name, text, createdAt:nowISOTime()};
+    const newComments = [...(t.comments||[]), comment];
+    await dbApi.collection('tasks').doc(t.id).update({comments:newComments});
+  }));
+
+  const submitLinkForm = document.getElementById('submitLinkForm');
+  if(submitLinkForm) submitLinkForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const sm = state.submitModal; const t = getTaskById(sm.taskId); if(!t) return;
+    const link = document.getElementById('submitLink').value.trim();
+    const note = document.getElementById('submitNote').value.trim();
+    if(!link) return;
+    const isResubmit = sm.mode==='resubmit';
+    const histText = isResubmit ? 'Đã sửa xong, chuyển "Đợi duyệt"' : 'Nộp bài, chuyển "Đợi duyệt"';
+    const newHistory = [...(t.history||[]), {t:todayDMY(), text:histText}];
+    const commentText = note ? `${note}\nLink: ${link}` : `Đã nộp bài: ${link}`;
+    const newComments = [...(t.comments||[]), {id:'c'+Date.now(), authorId:state.authedUser.id, authorName:state.authedUser.name, text:commentText, createdAt:nowISOTime()}];
+    await dbApi.collection('tasks').doc(t.id).update({ status:'review', fileLink:link, history:newHistory, comments:newComments });
+    try{
+      await dbApi.collection('sheetQueue').add({
+        taskId:t.id, taskLabel:taskLabel(t), taskKeyword:t.keyword, link,
+        employeeId:state.authedUser.id, employeeName:state.authedUser.name,
+        submittedAt: nowISOTime(),
+      });
+    }catch(err){ /* queueing best-effort; the task update above already succeeded */ }
+    state.submitModal = null;
+    render();
+  });
+
+  const fixForm = document.getElementById('fixForm');
+  if(fixForm) fixForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const fm = state.fixModal; const t = getTaskById(fm.taskId); if(!t) return;
+    const note = document.getElementById('fixNote').value.trim();
+    const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa'}];
+    await dbApi.collection('tasks').doc(t.id).update({status:'fix', note, history:newHistory});
+    state.fixModal = null;
+    render();
+  });
+
+  app.querySelectorAll('[data-action="askDeleteTask"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.confirmModal = {title:'Xoá task', message:'Xoá task này? Hành động không thể hoàn tác.', confirmLabel:'Xoá task', onConfirm:'deleteTask', payload:b.dataset.taskid};
+    render();
+  }));
+  app.querySelectorAll('[data-action="confirmYes"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const cm = state.confirmModal; if(!cm) return;
+    if(cm.onConfirm==='removeUser'){
+      try{ await callFn('deleteTeamMember', {uid: cm.payload}); }
+      catch(err){ alert('Không xoá được: ' + (err.message||err)); }
+    }
+    if(cm.onConfirm==='deleteTask'){ await dbApi.collection('tasks').doc(cm.payload).delete(); state.openTaskId=null; }
+    state.confirmModal=null; render();
+  }));
+
+  ['fQ','fStatus','fAssignedBy','fAssignee','fDeadline'].forEach(id=>{
+    const el = document.getElementById(id); if(!el) return;
+    const key = id.slice(1,2).toLowerCase()+id.slice(2);
+    el.addEventListener('input', ()=>{ state.taskFilters[key]=el.value; render(); restoreFocus(id); });
+    el.addEventListener('change', ()=>{ state.taskFilters[key]=el.value; render(); });
+  });
+  const clearBtn = app.querySelector('[data-action="clearFilters"]');
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.taskFilters={q:'',status:'',assignedBy:'',assignee:'',deadline:''}; render(); });
+
+  const dismissBtn = app.querySelector('[data-action="dismissBanner"]');
+  if(dismissBtn) dismissBtn.addEventListener('click', ()=>{ state.bannerDismissed=true; render(); });
+
+  const calPrev = app.querySelector('[data-action="calPrev"]');
+  if(calPrev) calPrev.addEventListener('click', ()=>{ state.calMonth--; if(state.calMonth<0){state.calMonth=11; state.calYear--;} render(); });
+  const calNext = app.querySelector('[data-action="calNext"]');
+  if(calNext) calNext.addEventListener('click', ()=>{ state.calMonth++; if(state.calMonth>11){state.calMonth=0; state.calYear++;} render(); });
+
+  app.querySelectorAll('[data-calday]').forEach(cell=>cell.addEventListener('click', ()=>{
+    state.calDayModal = {date: cell.dataset.calday}; render();
+  }));
+  app.querySelectorAll('[data-daychoice]').forEach(b=>b.addEventListener('click', ()=>{
+    const hidden = document.getElementById('dayChoiceValue'); if(!hidden) return;
+    hidden.value = b.dataset.daychoice;
+    app.querySelectorAll('[data-daychoice]').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    const lf = document.getElementById('leaveReasonField');
+    if(lf) lf.style.display = b.dataset.daychoice==='leave' ? '' : 'none';
+  }));
+  const calDayForm = document.getElementById('calDayForm');
+  if(calDayForm) calDayForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const cd = state.calDayModal; const uid = state.authedUser.id;
+    const choice = document.getElementById('dayChoiceValue').value;
+    const daysObj = {...(SCHEDULE[uid]||{})};
+    if(choice==='work'){ daysObj[cd.date]='work'; }
+    else if(choice==='leave'){
+      const reason = document.getElementById('leaveReason').value.trim() || 'Không nêu lý do';
+      daysObj[cd.date] = {leave:true, reason};
+    } else { delete daysObj[cd.date]; }
+    await dbApi.collection('schedule').doc(uid).set({days:daysObj});
+    if(choice==='leave'){
+      await dbApi.collection('leaveRequests').add({userId:uid, date:cd.date, reason: daysObj[cd.date].reason, status:'pending'});
+    } else {
+      const toRemove = LEAVE_REQUESTS.filter(r=>r.userId===uid && r.date===cd.date);
+      for(const r of toRemove){ try{ await dbApi.collection('leaveRequests').doc(r.id).delete(); }catch(err){} }
+    }
+    state.calDayModal = null;
+    render();
+  });
+
+  app.querySelectorAll('[data-leaveaction]').forEach(b=>b.addEventListener('click', async ()=>{
+    const req = LEAVE_REQUESTS.find(r=>r.id===b.dataset.leaveid); if(!req) return;
+    const newStatus = b.dataset.leaveaction==='approve' ? 'approved' : 'rejected';
+    await dbApi.collection('leaveRequests').doc(req.id).update({status:newStatus});
+    if(newStatus==='rejected'){
+      const daysObj = {...(SCHEDULE[req.userId]||{})};
+      delete daysObj[req.date];
+      await dbApi.collection('schedule').doc(req.userId).set({days:daysObj});
+    }
+  }));
+
+  app.querySelectorAll('[data-rolechange]').forEach(sel=>sel.addEventListener('change', async ()=>{
+    const uid = sel.dataset.rolechange, newRole = sel.value, prevRole = sel.dataset.prevrole;
+    sel.disabled = true;
+    try{ await callFn('updateTeamMember', {uid, role:newRole}); }
+    catch(err){ alert('Không đổi được vai trò: ' + (err.message||err)); sel.value = prevRole; }
+    sel.disabled = false;
+  }));
+  app.querySelectorAll('[data-removeuser]').forEach(b=>b.addEventListener('click', ()=>{
+    const person = byId(b.dataset.removeuser);
+    state.confirmModal = {title:'Xoá nhân sự', message:`Xoá "${person.name}" khỏi hệ thống? Các task đã giao trước đó vẫn còn nhưng sẽ hiện "(đã xoá)".`, confirmLabel:'Xoá', onConfirm:'removeUser', payload:person.id};
+    render();
+  }));
+
+  const openPersonBtn = app.querySelector('[data-action="openPersonModal"]');
+  if(openPersonBtn) openPersonBtn.addEventListener('click', ()=>{ state.personModal=true; render(); });
+  const personForm = document.getElementById('personForm');
+  if(personForm) personForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn = personForm.querySelector('button[type="submit"]');
+    if(btn) btn.disabled = true;
+    try{
+      await callFn('createTeamMember', {
+        name: document.getElementById('pName').value.trim(),
+        role: document.getElementById('pRole').value,
+        title: document.getElementById('pTitle').value.trim(),
+        username: document.getElementById('pUsername').value.trim(),
+        password: document.getElementById('pPassword').value,
+      });
+      state.personModal = false;
+    }catch(err){
+      alert('Không thêm được nhân sự: ' + (err.message||err));
+    }
+    if(btn) btn.disabled = false;
+    render();
+  });
+
+  app.querySelectorAll('[data-resetpw]').forEach(b=>b.addEventListener('click', ()=>{
+    state.resetPwModal = {uid: b.dataset.resetpw, name: b.dataset.personname};
+    render();
+  }));
+  const resetPwForm = document.getElementById('resetPwForm');
+  if(resetPwForm) resetPwForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn = resetPwForm.querySelector('button[type="submit"]');
+    if(btn) btn.disabled = true;
+    try{
+      await callFn('resetTeamMemberPassword', {uid: state.resetPwModal.uid, newPassword: document.getElementById('newPwInput').value});
+      state.resetPwModal = null;
+    }catch(err){
+      alert('Không đặt lại được mật khẩu: ' + (err.message||err));
+    }
+    if(btn) btn.disabled = false;
+    render();
+  });
+
+  /* generic close handlers for the small modals */
+  const closeActionMap = {
+    closeSubmitModal: ()=>state.submitModal=null,
+    closeFixModal: ()=>state.fixModal=null,
+    closeConfirmModal: ()=>state.confirmModal=null,
+    closeCalDayModal: ()=>state.calDayModal=null,
+    closePersonModal: ()=>state.personModal=false,
+    closeResetPwModal: ()=>state.resetPwModal=null,
+  };
+  Object.keys(closeActionMap).forEach(name=>{
+    app.querySelectorAll(`[data-action="${name}"]`).forEach(b=>b.addEventListener('click', ()=>{ closeActionMap[name](); render(); }));
+  });
+  const closeBgMap = {
+    submitmodal: ()=>state.submitModal=null,
+    fixmodal: ()=>state.fixModal=null,
+    confirmmodal: ()=>state.confirmModal=null,
+    caldaymodal: ()=>state.calDayModal=null,
+    personmodal: ()=>state.personModal=false,
+    resetpwmodal: ()=>state.resetPwModal=null,
+  };
+  Object.keys(closeBgMap).forEach(key=>{
+    app.querySelectorAll(`[data-close="${key}"]`).forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ closeBgMap[key](); render(); } }));
+  });
+}
+function restoreFocus(id){ const el=document.getElementById(id); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } }
+
+/* ============================= POLLEN CLICK EFFECT ============================= */
+(function setupPollenEffect(){
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduceMotion) return;
+  document.addEventListener('click', function(e){
+    const count = 6 + Math.floor(Math.random()*5);
+    for(let i=0;i<count;i++){
+      const p = document.createElement('span');
+      p.className = 'pollen-particle';
+      const angle = Math.random()*Math.PI*2;
+      const dist = 26 + Math.random()*54;
+      const dx = Math.cos(angle)*dist;
+      const dy = Math.sin(angle)*dist - 12;
+      const size = 3.5 + Math.random()*5;
+      const dur = 0.5 + Math.random()*0.4;
+      p.style.left = e.clientX+'px';
+      p.style.top = e.clientY+'px';
+      p.style.width = size+'px';
+      p.style.height = size+'px';
+      p.style.setProperty('--dx', dx.toFixed(1)+'px');
+      p.style.setProperty('--dy', dy.toFixed(1)+'px');
+      p.style.setProperty('--rot', (Math.random()*140-70).toFixed(0)+'deg');
+      p.style.animationDuration = dur+'s';
+      document.body.appendChild(p);
+      p.addEventListener('animationend', function(){ p.remove(); });
+      setTimeout(function(){ if(p.parentNode) p.remove(); }, (dur*1000)+200);
+    }
+  }, true);
+})();
+
+render();
+initApp();
+</script>
+</body>
+</html>
