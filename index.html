@@ -1865,7 +1865,7 @@ function attachHandlers(){
   app.querySelectorAll('[data-action="confirmYes"]').forEach(b=>b.addEventListener('click', async ()=>{
     const cm = state.confirmModal; if(!cm) return;
     if(cm.onConfirm==='removeUser'){
-      try{ await callFn('deleteTeamMember', {uid: cm.payload}); }
+      try{ await callFn('delete-team-member', {uid: cm.payload}); }
       catch(err){ alert('Không xoá được: ' + (err.message||err)); }
     }
     if(cm.onConfirm==='deleteTask'){ await dbApi.collection('tasks').doc(cm.payload).delete(); state.openTaskId=null; }
@@ -1973,7 +1973,7 @@ function attachHandlers(){
   app.querySelectorAll('[data-rolechange]').forEach(sel=>sel.addEventListener('change', async ()=>{
     const uid = sel.dataset.rolechange, newRole = sel.value, prevRole = sel.dataset.prevrole;
     sel.disabled = true;
-    try{ await callFn('updateTeamMember', {uid, role:newRole}); }
+    try{ await callFn('update-team-member', {uid, role:newRole}); }
     catch(err){ alert('Không đổi được vai trò: ' + (err.message||err)); sel.value = prevRole; }
     sel.disabled = false;
   }));
@@ -1991,7 +1991,7 @@ function attachHandlers(){
     const btn = personForm.querySelector('button[type="submit"]');
     if(btn) btn.disabled = true;
     try{
-      await callFn('createTeamMember', {
+      await callFn('create-team-member', {
         name: document.getElementById('pName').value.trim(),
         role: document.getElementById('pRole').value,
         title: document.getElementById('pTitle').value.trim(),
@@ -2016,7 +2016,7 @@ function attachHandlers(){
     const btn = resetPwForm.querySelector('button[type="submit"]');
     if(btn) btn.disabled = true;
     try{
-      await callFn('resetTeamMemberPassword', {uid: state.resetPwModal.uid, newPassword: document.getElementById('newPwInput').value});
+      await callFn('reset-team-member-password', {uid: state.resetPwModal.uid, newPassword: document.getElementById('newPwInput').value});
       state.resetPwModal = null;
     }catch(err){
       alert('Không đặt lại được mật khẩu: ' + (err.message||err));
@@ -2069,7 +2069,7 @@ function attachHandlers(){
         continue;
       }
       try{
-        await callFn('createTeamMember', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password });
+        await callFn('create-team-member', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password });
         successCount++;
       }catch(err){
         errors.push(`"${r.name.trim()}" (${r.username.trim()}): ${err.message||err}`);
