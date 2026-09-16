@@ -217,7 +217,7 @@
   .role-intern{ background:var(--st-approved-soft); color:var(--st-approved); }
 
   /* ---------- stat cards ---------- */
-  .stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  .stat-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:14px; margin-bottom:22px; }
   .stat-card{
     background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px;
     display:flex; flex-direction:column; gap:6px; box-shadow:var(--shadow-sm);
@@ -536,7 +536,7 @@ let dbApi = null;
 let state = {
   authedUser:null,
   page:'tasks',
-  taskFilters:{q:'', status:'', assignedBy:'', assignee:'', deadline:'', type:''},
+  taskFilters:{q:'', status:'', assignedBy:'', assignee:'', deadlineFrom:'', deadlineTo:'', type:''},
   taskTab:'current',        // 'current' | 'backlog'
   taskWeekMonday:null,      // ISO date of the Monday being viewed on the "current week" tab (set on init)
   backlogPage:1,
@@ -551,8 +551,12 @@ let state = {
   calDayModal:null,   // {date}
   personModal:false,
   resetPwModal:null,  // {uid, name}
+  bulkPersonModal:false,
+  bulkRows:[],        // [{name, role, title, username, password}]
+  bulkResult:null,    // {successCount, errors:[string]}
   notifOpen:false,
-  reportsRange:'this_week', // 'this_week'|'last_week'|'this_month'|'last_month'
+  reportsRange:'this_week', // 'this_week'|'last_week'|'this_month'|'last_month'|'custom'
+  reportsCustomFrom:'', reportsCustomTo:'',
 };
 
 /* ============================= HELPERS ============================= */
@@ -751,7 +755,7 @@ async function loadProfileFor(uid){
    isn't even shown a nav item for (e.g. stuck on "people" as an intern). */
 function resetUiState(){
   state.page = 'tasks';
-  state.taskFilters = {q:'', status:'', assignedBy:'', assignee:'', deadline:'', type:''};
+  state.taskFilters = {q:'', status:'', assignedBy:'', assignee:'', deadlineFrom:'', deadlineTo:'', type:''};
   state.taskTab = 'current';
   state.taskWeekMonday = currentWeekMonday();
   state.backlogPage = 1;
@@ -763,8 +767,12 @@ function resetUiState(){
   state.calDayModal = null;
   state.personModal = false;
   state.resetPwModal = null;
+  state.bulkPersonModal = false;
+  state.bulkRows = [];
+  state.bulkResult = null;
   state.notifOpen = false;
   state.reportsRange = 'this_week';
+  state.reportsCustomFrom = ''; state.reportsCustomTo = '';
   state.loginError = '';
 }
 
@@ -967,7 +975,8 @@ function applyCommonFilters(list, u){
   if(f.type) list = list.filter(t=>t.type===f.type);
   if(f.assignedBy) list = list.filter(t=>t.assignedBy===f.assignedBy);
   if(f.assignee) list = list.filter(t=>t.assignee===f.assignee);
-  if(f.deadline) list = list.filter(t=>t.deadline===f.deadline);
+  if(f.deadlineFrom) list = list.filter(t=>t.deadline>=f.deadlineFrom);
+  if(f.deadlineTo) list = list.filter(t=>t.deadline<=f.deadlineTo);
   return list;
 }
 // "Tuần hiện tại" (or whichever week is being browsed): tasks whose week_id
@@ -1027,6 +1036,7 @@ function renderTasksPage(u){
         <div class="sub">${state.taskWeekMonday===currentWeekMonday()?'Tuần hiện tại':'Đang xem tuần khác'}</div></div>
       <button class="btn btn-ghost btn-sm" data-action="weekNext">▶</button>
       ${state.taskWeekMonday!==currentWeekMonday() ? `<button class="btn btn-ghost btn-sm" data-action="weekToday">Về tuần này</button>` : ''}
+      <div class="field" style="margin-left:auto;min-width:170px;"><label>Đi tới ngày bất kỳ</label><input type="date" id="weekJump" value="${state.taskWeekMonday}"></div>
     </div>` : `<div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">Task được giao ở các tuần trước, chưa "Đã duyệt" — không phụ thuộc tuần đang xem.</div>`}
 
     <div class="filter-bar">
@@ -1039,7 +1049,8 @@ function renderTasksPage(u){
       </div>
       ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${managers.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
       ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${interns.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
-      <div class="field"><label>Deadline</label><input type="date" id="fDeadline" value="${state.taskFilters.deadline}"></div>
+      <div class="field"><label>Deadline từ ngày</label><input type="date" id="fDeadlineFrom" value="${state.taskFilters.deadlineFrom}"></div>
+      <div class="field"><label>Deadline đến ngày</label><input type="date" id="fDeadlineTo" value="${state.taskFilters.deadlineTo}"></div>
       <button class="btn btn-ghost btn-sm" data-action="clearFilters">Xoá lọc</button>
     </div>
 
@@ -1319,6 +1330,7 @@ function renderCalendarPage(u){
             <button class="btn btn-ghost btn-sm" data-action="calPrev">◀</button>
             <h3>${MONTH_NAMES[m]} ${y}</h3>
             <button class="btn btn-ghost btn-sm" data-action="calNext">▶</button>
+            <input type="date" id="calJump" title="Đi tới ngày bất kỳ" value="${isoOf(y,m,1)}" style="padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;background:var(--surface);color:var(--ink);">
           </div>
           <div class="cal-legend">
             <span><i style="background:var(--st-approved-soft);border:1px solid var(--st-approved)"></i>Làm việc</span>
@@ -1398,11 +1410,17 @@ const REPORT_RANGES = {
   last_week:  {label:'Tuần trước'},
   this_month: {label:'Tháng này'},
   last_month: {label:'Tháng trước'},
+  custom:     {label:'Tuỳ chỉnh (chọn ngày)'},
 };
 function reportRangeDates(range){
   const today = new Date(todayISO()+'T00:00:00');
   let start, end;
-  if(range==='this_week'||range==='last_week'){
+  if(range==='custom'){
+    const from = state.reportsCustomFrom || todayISO();
+    const to = state.reportsCustomTo || todayISO();
+    start = new Date((from<=to?from:to)+'T00:00:00');
+    end = new Date((from<=to?to:from)+'T00:00:00');
+  } else if(range==='this_week'||range==='last_week'){
     start = new Date(mondayOf(today)+'T00:00:00');
     if(range==='last_week') start.setDate(start.getDate()-7);
     end = new Date(start); end.setDate(start.getDate()+6);
@@ -1442,6 +1460,8 @@ function renderReportsPage(u){
   const overdueAll = TASKS.filter(t=>isOverdue(t.deadline,t.status));
   const overdueInRange = inRange.filter(t=>isOverdue(t.deadline,t.status)).length;
   const prevOverdue = inPrevRange.filter(t=>isOverdue(t.deadline,t.status)).length;
+  const overdueRate = totalTasks ? Math.round((overdueInRange/totalTasks)*100) : 0;
+  const prevOverdueRate = prevTotal ? Math.round((prevOverdue/prevTotal)*100) : 0;
   const firstPassRate = firstPassRateOf(inRange), prevFirstPassRate = firstPassRateOf(inPrevRange);
 
   const perIntern = interns.map(iu=>{
@@ -1482,7 +1502,14 @@ function renderReportsPage(u){
 
   return `
     <div class="section-title">
-      <div class="range-picker">${Object.keys(REPORT_RANGES).map(r=>`<button class="range-btn ${state.reportsRange===r?'active':''}" data-reportrange="${r}">${REPORT_RANGES[r].label}</button>`).join('')}</div>
+      <div class="range-picker">
+        ${Object.keys(REPORT_RANGES).map(r=>`<button class="range-btn ${state.reportsRange===r?'active':''}" data-reportrange="${r}">${REPORT_RANGES[r].label}</button>`).join('')}
+        ${state.reportsRange==='custom' ? `
+          <input type="date" id="reportCustomFrom" value="${state.reportsCustomFrom}" style="padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;">
+          <span style="align-self:center;color:var(--ink-faint);font-size:12px;">đến</span>
+          <input type="date" id="reportCustomTo" value="${state.reportsCustomTo}" style="padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;">
+        ` : ''}
+      </div>
       <div style="font-size:11.5px;color:var(--ink-faint);">${fmtDateFull(start)} – ${fmtDateFull(end)} · so với ${fmtDateFull(prevStart)} – ${fmtDateFull(prevEnd)}</div>
     </div>
 
@@ -1491,6 +1518,7 @@ function renderReportsPage(u){
       <div class="stat-card"><div class="label">Hoàn thành (đã duyệt)</div><div class="value success num">${approved}</div>${deltaHtml(approved,prevApproved)}</div>
       <div class="stat-card"><div class="label">Trễ deadline (trong kỳ)</div><div class="value ${overdueInRange>0?'danger':''} num">${overdueInRange}</div>${deltaHtml(overdueInRange,prevOverdue)}</div>
       <div class="stat-card"><div class="label">Tỷ lệ đạt duyệt lần đầu</div><div class="value accent num">${firstPassRate}%</div>${deltaHtml(firstPassRate,prevFirstPassRate,'%')}</div>
+      <div class="stat-card"><div class="label">Tỷ lệ trễ deadline</div><div class="value ${overdueRate>0?'danger':''} num">${overdueRate}%</div>${deltaHtml(overdueRate,prevOverdueRate,'%')}</div>
     </div>
 
     <div class="two-col">
@@ -1581,7 +1609,10 @@ function renderPeoplePage(u){
   return `
     <div class="section-title">
       <div style="font-size:12.5px;color:var(--ink-muted);max-width:520px;">Chỉ Quản trị mới thấy trang này. Mật khẩu đặt ở đây do bạn tự quản lý và gửi lại cho từng người.</div>
-      <button class="btn btn-primary" data-action="openPersonModal">+ Thêm nhân sự</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" data-action="openBulkPersonModal">+ Thêm nhiều cùng lúc</button>
+        <button class="btn btn-primary" data-action="openPersonModal">+ Thêm nhân sự</button>
+      </div>
     </div>
     <div class="panel">
       <div class="scrollx"><table class="data-table">
@@ -1609,6 +1640,7 @@ function renderPeoplePage(u){
       <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn.</div>
     </div>
     ${state.resetPwModal ? renderResetPwModal() : ''}
+    ${state.bulkPersonModal ? renderBulkPersonModal() : ''}
   `;
 }
 function renderResetPwModal(){
@@ -1625,6 +1657,50 @@ function renderResetPwModal(){
         <div class="modal-foot">
           <button type="button" class="btn btn-ghost" data-action="closeResetPwModal">Huỷ</button>
           <button type="submit" class="btn btn-primary">Xác nhận</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Add MULTIPLE people at once ---- */
+function renderBulkPersonModal(){
+  if(!state.bulkPersonModal) return '';
+  const rows = state.bulkRows;
+  const result = state.bulkResult;
+  return `
+  <div class="modal-bg" data-close="bulkpersonmodal">
+    <div class="modal" data-stop="1" style="max-width:820px;">
+      <div class="modal-head"><h2>Thêm nhiều nhân sự cùng lúc</h2><button class="modal-close" data-action="closeBulkPersonModal">✕</button></div>
+      <form id="bulkPersonForm">
+        <div class="modal-body">
+          <div style="font-size:12px;color:var(--ink-muted);">Điền từng dòng 1 người. Dòng nào để trống hoàn toàn sẽ tự bỏ qua. Bấm "+ Thêm dòng" nếu cần nhiều hơn.</div>
+          <div class="scrollx"><table class="data-table" style="min-width:680px;">
+            <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản đăng nhập</th><th>Mật khẩu</th><th></th></tr></thead>
+            <tbody>
+              ${rows.map((r,i)=>`<tr>
+                <td><input type="text" id="bulk_name_${i}" data-bulkfield="name" data-bulkidx="${i}" value="${escapeHtml(r.name)}" placeholder="Họ tên" style="min-width:120px;"></td>
+                <td><select id="bulk_role_${i}" data-bulkfield="role" data-bulkidx="${i}" style="min-width:110px;">
+                  <option value="intern" ${r.role==='intern'?'selected':''}>Thực tập sinh</option>
+                  <option value="manager" ${r.role==='manager'?'selected':''}>Quản lý</option>
+                  <option value="admin" ${r.role==='admin'?'selected':''}>Quản trị</option>
+                </select></td>
+                <td><input type="text" id="bulk_title_${i}" data-bulkfield="title" data-bulkidx="${i}" value="${escapeHtml(r.title)}" placeholder="vd: TTS Content" style="min-width:120px;"></td>
+                <td><input type="text" id="bulk_username_${i}" data-bulkfield="username" data-bulkidx="${i}" value="${escapeHtml(r.username)}" placeholder="vd: an.nguyen" style="min-width:110px;"></td>
+                <td><input type="text" id="bulk_password_${i}" data-bulkfield="password" data-bulkidx="${i}" value="${escapeHtml(r.password)}" placeholder="Mật khẩu" style="min-width:100px;"></td>
+                <td><button type="button" class="btn btn-ghost btn-sm" data-bulkremove="${i}" style="color:var(--danger);">✕</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table></div>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="bulkAddRow">+ Thêm dòng</button>
+          ${result ? `<div style="font-size:12.5px;">
+            ${result.successCount>0?`<div style="color:var(--success);font-weight:700;">Đã tạo thành công ${result.successCount} nhân sự.</div>`:''}
+            ${result.errors.length?`<div style="color:var(--danger);margin-top:4px;">${result.errors.map(e=>`• ${escapeHtml(e)}`).join('<br>')}</div>`:''}
+          </div>` : ''}
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeBulkPersonModal">Đóng</button>
+          <button type="submit" class="btn btn-primary">Tạo tất cả</button>
         </div>
       </form>
     </div>
@@ -1796,17 +1872,23 @@ function attachHandlers(){
     state.confirmModal=null; render();
   }));
 
-  ['fQ','fStatus','fType','fAssignedBy','fAssignee','fDeadline'].forEach(id=>{
+  ['fQ','fStatus','fType','fAssignedBy','fAssignee','fDeadlineFrom','fDeadlineTo'].forEach(id=>{
     const el = document.getElementById(id); if(!el) return;
     const key = id.slice(1,2).toLowerCase()+id.slice(2);
     el.addEventListener('input', ()=>{ state.taskFilters[key]=el.value; render(); restoreFocus(id); });
     el.addEventListener('change', ()=>{ state.taskFilters[key]=el.value; render(); });
   });
   const clearBtn = app.querySelector('[data-action="clearFilters"]');
-  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.taskFilters={q:'',status:'',type:'',assignedBy:'',assignee:'',deadline:''}; render(); });
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.taskFilters={q:'',status:'',type:'',assignedBy:'',assignee:'',deadlineFrom:'',deadlineTo:''}; render(); });
+  const weekJump = document.getElementById('weekJump');
+  if(weekJump) weekJump.addEventListener('change', ()=>{ if(weekJump.value){ state.taskWeekMonday = mondayOf(weekJump.value); render(); } });
 
   app.querySelectorAll('[data-tasktab]').forEach(b=>b.addEventListener('click', ()=>{ state.taskTab=b.dataset.tasktab; render(); }));
   app.querySelectorAll('[data-reportrange]').forEach(b=>b.addEventListener('click', ()=>{ state.reportsRange=b.dataset.reportrange; render(); }));
+  const rcFrom = document.getElementById('reportCustomFrom');
+  if(rcFrom) rcFrom.addEventListener('change', ()=>{ state.reportsCustomFrom = rcFrom.value; render(); });
+  const rcTo = document.getElementById('reportCustomTo');
+  if(rcTo) rcTo.addEventListener('change', ()=>{ state.reportsCustomTo = rcTo.value; render(); });
   const weekPrev = app.querySelector('[data-action="weekPrev"]');
   if(weekPrev) weekPrev.addEventListener('click', ()=>{ state.taskWeekMonday = addDaysISO(state.taskWeekMonday, -7); render(); });
   const weekNext = app.querySelector('[data-action="weekNext"]');
@@ -1841,6 +1923,12 @@ function attachHandlers(){
   if(calPrev) calPrev.addEventListener('click', ()=>{ state.calMonth--; if(state.calMonth<0){state.calMonth=11; state.calYear--;} render(); });
   const calNext = app.querySelector('[data-action="calNext"]');
   if(calNext) calNext.addEventListener('click', ()=>{ state.calMonth++; if(state.calMonth>11){state.calMonth=0; state.calYear++;} render(); });
+  const calJump = document.getElementById('calJump');
+  if(calJump) calJump.addEventListener('change', ()=>{
+    if(!calJump.value) return;
+    const [jy,jm] = calJump.value.split('-').map(Number);
+    state.calYear = jy; state.calMonth = jm-1; render();
+  });
 
   app.querySelectorAll('[data-calday]').forEach(cell=>cell.addEventListener('click', ()=>{
     state.calDayModal = {date: cell.dataset.calday}; render();
@@ -1937,6 +2025,64 @@ function attachHandlers(){
     render();
   });
 
+  const openBulkPersonBtn = app.querySelector('[data-action="openBulkPersonModal"]');
+  if(openBulkPersonBtn) openBulkPersonBtn.addEventListener('click', ()=>{
+    state.bulkPersonModal = true;
+    state.bulkRows = [0,1,2].map(()=>({name:'', role:'intern', title:'', username:'', password:''}));
+    state.bulkResult = null;
+    render();
+  });
+  const bulkAddRowBtn = app.querySelector('[data-action="bulkAddRow"]');
+  if(bulkAddRowBtn) bulkAddRowBtn.addEventListener('click', ()=>{
+    state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:''});
+    render();
+  });
+  app.querySelectorAll('[data-bulkremove]').forEach(b=>b.addEventListener('click', ()=>{
+    const idx = Number(b.dataset.bulkremove);
+    state.bulkRows.splice(idx,1);
+    if(!state.bulkRows.length) state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:''});
+    render();
+  }));
+  app.querySelectorAll('[data-bulkfield]').forEach(el=>{
+    const evt = el.tagName==='SELECT' ? 'change' : 'input';
+    el.addEventListener(evt, ()=>{
+      const idx = Number(el.dataset.bulkidx), field = el.dataset.bulkfield;
+      if(state.bulkRows[idx]) state.bulkRows[idx][field] = el.value;
+      render();
+      if(evt==='input') restoreFocus(el.id);
+    });
+  });
+  const bulkPersonForm = document.getElementById('bulkPersonForm');
+  if(bulkPersonForm) bulkPersonForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn = bulkPersonForm.querySelector('button[type="submit"]');
+    if(btn) btn.disabled = true;
+    const remaining = [];
+    const errors = [];
+    let successCount = 0;
+    for(const r of state.bulkRows){
+      const blank = !r.name.trim() && !r.username.trim() && !r.password.trim();
+      if(blank) continue;
+      if(!r.name.trim() || !r.username.trim() || !r.password.trim()){
+        errors.push(`"${r.name.trim()||r.username.trim()||'(dòng thiếu thông tin)'}": cần đủ Họ tên, Tài khoản và Mật khẩu.`);
+        remaining.push(r);
+        continue;
+      }
+      try{
+        await callFn('createTeamMember', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password });
+        successCount++;
+      }catch(err){
+        errors.push(`"${r.name.trim()}" (${r.username.trim()}): ${err.message||err}`);
+        remaining.push(r);
+      }
+    }
+    state.bulkRows = remaining.length ? remaining : [{name:'', role:'intern', title:'', username:'', password:''}];
+    state.bulkResult = { successCount, errors };
+    if(errors.length===0 && successCount>0){ state.bulkPersonModal=false; state.bulkResult=null; }
+    if(btn) btn.disabled = false;
+    render();
+  });
+
   /* generic close handlers for the small modals */
   const closeActionMap = {
     closeSubmitModal: ()=>state.submitModal=null,
@@ -1945,6 +2091,7 @@ function attachHandlers(){
     closeCalDayModal: ()=>state.calDayModal=null,
     closePersonModal: ()=>state.personModal=false,
     closeResetPwModal: ()=>state.resetPwModal=null,
+    closeBulkPersonModal: ()=>state.bulkPersonModal=false,
   };
   Object.keys(closeActionMap).forEach(name=>{
     app.querySelectorAll(`[data-action="${name}"]`).forEach(b=>b.addEventListener('click', ()=>{ closeActionMap[name](); render(); }));
@@ -1956,6 +2103,7 @@ function attachHandlers(){
     caldaymodal: ()=>state.calDayModal=null,
     personmodal: ()=>state.personModal=false,
     resetpwmodal: ()=>state.resetPwModal=null,
+    bulkpersonmodal: ()=>state.bulkPersonModal=false,
   };
   Object.keys(closeBgMap).forEach(key=>{
     app.querySelectorAll(`[data-close="${key}"]`).forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ closeBgMap[key](); render(); } }));
