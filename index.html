@@ -1469,7 +1469,8 @@ function renderReportsPage(u){
     const done = own.filter(t=>t.status==='approved').length;
     const late = own.filter(t=>isOverdue(t.deadline,t.status)).length;
     const doing = own.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
-    return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own)};
+    const lateRate = own.length ? Math.round((late/own.length)*100) : 0;
+    return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own), lateRate};
   });
   const maxDone = Math.max(1, ...perIntern.map(p=>p.done));
 
@@ -1571,7 +1572,7 @@ function renderReportsPage(u){
     <div class="panel" style="margin-top:20px;">
       <h3>Chi tiết theo thực tập sinh (kỳ này)</h3>
       <div class="scrollx"><table class="data-table">
-        <thead><tr><th>Nhân sự</th><th>Tổng giao</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Trễ hạn</th><th>Tỷ lệ đạt lần đầu</th></tr></thead>
+        <thead><tr><th>Nhân sự</th><th>Tổng giao</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Trễ hạn</th><th>Tỷ lệ trễ deadline</th><th>Tỷ lệ đạt lần đầu</th></tr></thead>
         <tbody>
           ${perIntern.length? perIntern.map(p=>`<tr>
             <td>${escapeHtml(p.iu.name)}</td>
@@ -1579,8 +1580,9 @@ function renderReportsPage(u){
             <td class="num-cell" style="color:var(--success);font-weight:700;">${p.done}</td>
             <td class="num-cell">${p.doing}</td>
             <td class="num-cell" style="color:${p.late>0?'var(--danger)':'inherit'};font-weight:${p.late>0?'700':'400'};">${p.late}</td>
+            <td class="num-cell" style="color:${p.lateRate>0?'var(--danger)':'inherit'};font-weight:${p.lateRate>0?'700':'400'};">${p.lateRate}%</td>
             <td class="num-cell">${p.rate}%</td>
-          </tr>`).join('') : `<tr><td colspan="6" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
+          </tr>`).join('') : `<tr><td colspan="7" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
         </tbody>
       </table></div>
     </div>
