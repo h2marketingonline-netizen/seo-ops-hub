@@ -612,6 +612,8 @@ let state = {
   backlogPage:1,
   openTaskId:null,
   showTaskForm:false,
+  editTaskModal:null,      // taskId being edited, or null
+  calDayViewModal:null,    // {date} — read-only "who's working this day" summary (managers)
   calMonth:new Date().getMonth(), calYear:new Date().getFullYear(),
   bannerDismissed:false,
   loginError:'',
@@ -709,7 +711,7 @@ const FIELD_MAP = {
   users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
-  sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at' },
+  sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at', payload:'payload' },
   notifications: { userId:'user_id', title:'title', body:'body', createdAt:'created_at', readAt:'read_at' },
 };
 const TABLE_NAME = { tasks:'tasks', users:'profiles', schedule:'schedule', leaveRequests:'leave_requests', sheetQueue:'sheet_queue', notifications:'notifications' };
@@ -831,6 +833,8 @@ function resetUiState(){
   state.backlogPage = 1;
   state.openTaskId = null;
   state.showTaskForm = false;
+  state.editTaskModal = null;
+  state.calDayViewModal = null;
   state.submitModal = null;
   state.fixModal = null;
   state.confirmModal = null;
@@ -1112,10 +1116,12 @@ function renderShell(){
   </div>
   ${state.openTaskId ? renderTaskModal(getTaskById(state.openTaskId), u) : ''}
   ${state.showTaskForm ? renderTaskFormModal(u) : ''}
+  ${state.editTaskModal ? renderEditTaskModal() : ''}
   ${state.submitModal ? renderSubmitModal() : ''}
   ${state.fixModal ? renderFixModal() : ''}
   ${state.confirmModal ? renderConfirmModal() : ''}
   ${state.calDayModal ? renderCalDayModal() : ''}
+  ${state.calDayViewModal ? renderCalDayViewModal() : ''}
   ${state.personModal ? renderPersonModal() : ''}
   `;
 }
@@ -1265,6 +1271,7 @@ function renderTaskModal(t,u){
       actions = `<button class="btn" style="border-color:var(--st-fix);color:var(--st-fix);" data-taskaction="requestfix">Cần sửa</button>
                  <button class="btn btn-primary" data-taskaction="approve">Duyệt đạt</button>`;
     }
+    actions += `<button class="btn btn-ghost btn-sm" data-action="openEditTask" data-taskid="${t.id}">Sửa task</button>`;
     actions += `<button class="btn btn-ghost btn-sm" data-action="askDeleteTask" data-taskid="${t.id}" style="color:var(--danger);margin-left:auto;">Xoá task</button>`;
   }
   const comments = t.comments||[];
@@ -1316,7 +1323,7 @@ function renderSubmitModal(){
       <div class="modal-head"><h2>${isResubmit? 'Đã sửa xong' : 'Nộp bài — chuyển Đợi duyệt'}</h2><button class="modal-close" data-action="closeSubmitModal">✕</button></div>
       <form id="submitLinkForm">
         <div class="modal-body">
-          <div class="field"><label>Link Google Docs bài viết</label><input type="url" id="submitLink" required placeholder="https://docs.google.com/document/d/..." value="${escapeHtml(t.fileLink||'')}"></div>
+          <div class="field"><label>Link Google Docs bài viết (không bắt buộc)</label><input type="url" id="submitLink" placeholder="https://docs.google.com/document/d/..." value="${escapeHtml(t.fileLink||'')}"></div>
           <div class="field"><label>Ghi chú thêm (không bắt buộc)</label><textarea id="submitNote" placeholder="Vd: đã bổ sung phần FAQ theo yêu cầu..."></textarea></div>
         </div>
         <div class="modal-foot">
@@ -1391,6 +1398,34 @@ function renderTaskFormModal(u){
   </div>`;
 }
 
+/* ---- Task edit form modal ---- */
+function renderEditTaskModal(){
+  const taskId = state.editTaskModal; if(!taskId) return '';
+  const t = getTaskById(taskId); if(!t) return '';
+  const interns = USERS.filter(x=>x.role==='intern');
+  return `
+  <div class="modal-bg" data-close="edittaskmodal">
+    <div class="modal" data-stop="1">
+      <div class="modal-head"><h2>Sửa Task — ${taskLabel(t)}</h2><button class="modal-close" data-action="closeEditTask">✕</button></div>
+      <form id="editTaskForm">
+        <div class="modal-body">
+          <div class="field"><label>Keyword / Chủ đề</label><input type="text" id="etKeyword" required value="${escapeHtml(t.keyword)}"></div>
+          <div class="form-grid">
+            <div class="field"><label>Phân loại bài</label><select id="etType">${TYPE_ORDER.map(ty=>`<option value="${ty}" ${t.type===ty?'selected':''}>${TYPE_META[ty].label}</option>`).join('')}</select></div>
+            <div class="field"><label>Nhân sự thực hiện</label><select id="etAssignee" ${interns.length===0?'disabled':''}>${interns.map(i=>`<option value="${i.id}" ${t.assignee===i.id?'selected':''}>${escapeHtml(i.name)}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label>Deadline</label><input type="date" id="etDeadline" required value="${t.deadline}"></div>
+          <div class="field"><label>Mô tả công việc</label><textarea id="etDesc">${escapeHtml(t.desc||'')}</textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeEditTask">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
 /* ============================= CALENDAR PAGE ============================= */
 function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
 function dowMonFirst(y,m,d){ const j = new Date(y,m,d).getDay(); return j===0?6:j-1; }
@@ -1455,7 +1490,7 @@ function renderCalendarPage(u){
         marks += `<span class="cal-mark ${cls}" style="${opacity}" title="${escapeHtml(iu.name)} — S:${entry.morning||'–'} C:${entry.afternoon||'–'} (${entry.status})${entry.reason?' — '+escapeHtml(entry.reason):''}">${initials(iu.name)}</span>`;
       });
     }
-    cells += `<div class="cal-cell ${isIntern?'clickable':''}" ${isIntern?`data-calday="${iso}"`:''}>
+    cells += `<div class="cal-cell clickable" data-calday="${iso}">
       <div class="cal-daynum">${d}</div>
       ${isIntern? '' : `<div class="cal-marks">${marks}</div>`}
       ${isIntern? selfBlock : ''}
@@ -1500,7 +1535,7 @@ function renderCalendarPage(u){
           ${['T2','T3','T4','T5','T6','T7','CN'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
           ${cells}
         </div>
-        ${isIntern? `<div style="margin-top:12px;font-size:12px;color:var(--ink-faint)">Bấm vào 1 ngày để đăng ký ca Sáng / Chiều — mỗi lần đăng ký hoặc sửa đều cần Quản lý duyệt lại.</div>` : ''}
+        ${isIntern? `<div style="margin-top:12px;font-size:12px;color:var(--ink-faint)">Bấm vào 1 ngày để đăng ký ca Sáng / Chiều — mỗi lần đăng ký hoặc sửa đều cần Quản lý duyệt lại.</div>` : `<div style="margin-top:12px;font-size:12px;color:var(--ink-faint)">Bấm vào 1 ngày để xem ai làm việc / nghỉ phép hôm đó.</div>`}
       </div>
       <div class="panel">
         <h3>${isIntern? 'Trạng thái đăng ký của bạn' : `Đăng ký gần đây${pendingRegs.length?` · ${pendingRegs.length} chờ duyệt`:''}`}</h3>
@@ -1515,11 +1550,13 @@ function renderCalendarPage(u){
                 <div class="meta">${fmtDateFull(r.date)} · nộp lúc ${fmtDateTime(r.entry.submittedAt)}</div>
                 ${shiftBadgesHtml(r.entry)}
                 ${r.entry.reason?`<div class="reason">Lý do: ${escapeHtml(r.entry.reason)}</div>`:''}
-                ${r.entry.status==='pending' ? `
                 <div class="leave-req-actions">
+                  ${r.entry.status==='pending' ? `
                   <button class="btn btn-sm btn-primary" data-regaction="approve" data-reguser="${r.iu.id}" data-regdate="${r.date}">Duyệt</button>
-                  <button class="btn btn-sm btn-ghost" style="color:var(--danger)" data-regaction="reject" data-reguser="${r.iu.id}" data-regdate="${r.date}">Từ chối</button>
-                </div>` : ''}
+                  <button class="btn btn-sm btn-ghost" style="color:var(--danger)" data-regaction="reject" data-reguser="${r.iu.id}" data-regdate="${r.date}">Từ chối</button>` : ''}
+                  <button class="btn btn-sm btn-ghost" data-action="openCalDayEditFor" data-edituser="${r.iu.id}" data-editdate="${r.date}">Sửa</button>
+                  <button class="btn btn-sm btn-ghost" style="color:var(--danger)" data-action="askDeleteRegistration" data-eduser="${r.iu.id}" data-eddate="${r.date}">Xoá</button>
+                </div>
               </div>`).join('')}
           </div>` : `<div style="font-size:12.5px;color:var(--ink-faint)">Chưa có đăng ký nào.</div>`)}
       </div>
@@ -1530,7 +1567,10 @@ function renderCalendarPage(u){
 /* ---- Calendar day modal ---- */
 function renderCalDayModal(){
   const cd = state.calDayModal; if(!cd) return '';
-  const current = normalizeDayEntry(SCHEDULE[state.authedUser.id] && SCHEDULE[state.authedUser.id][cd.date]) || {morning:null,afternoon:null,reason:''};
+  const isOnBehalf = !!cd.userId && cd.userId !== state.authedUser.id;
+  const targetUid = cd.userId || state.authedUser.id;
+  const targetUser = isOnBehalf ? byId(targetUid) : state.authedUser;
+  const current = normalizeDayEntry(SCHEDULE[targetUid] && SCHEDULE[targetUid][cd.date]) || {morning:null,afternoon:null,reason:''};
   const shiftRow = (key,label,val)=>`
     <div class="field">
       <label>Ca ${label}</label>
@@ -1543,7 +1583,7 @@ function renderCalDayModal(){
   return `
   <div class="modal-bg" data-close="caldaymodal">
     <div class="modal" data-stop="1" style="max-width:440px;">
-      <div class="modal-head"><h2>Ngày ${fmtDate(cd.date)}</h2><button class="modal-close" data-action="closeCalDayModal">✕</button></div>
+      <div class="modal-head"><h2>Ngày ${fmtDate(cd.date)}${isOnBehalf?` — ${escapeHtml(targetUser.name)}`:''}</h2><button class="modal-close" data-action="closeCalDayModal">✕</button></div>
       <form id="calDayForm">
         <div class="modal-body">
           <input type="hidden" id="shiftMorning" value="${current.morning||''}">
@@ -1551,13 +1591,44 @@ function renderCalDayModal(){
           ${shiftRow('morning','Sáng',current.morning)}
           ${shiftRow('afternoon','Chiều',current.afternoon)}
           <div class="field"><label>Lý do (nếu có ca nghỉ phép)</label><textarea id="leaveReason">${escapeHtml(current.reason||'')}</textarea></div>
-          <div style="font-size:11.5px;color:var(--ink-faint);">Lưu lại sẽ chuyển đăng ký của ngày này về trạng thái "Chờ duyệt".</div>
+          <div style="font-size:11.5px;color:var(--ink-faint);">${isOnBehalf ? 'Vì Quản lý là người chỉnh, đăng ký sẽ được lưu ở trạng thái "Đã duyệt" luôn.' : 'Lưu lại sẽ chuyển đăng ký của ngày này về trạng thái "Chờ duyệt".'}</div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn btn-ghost" data-action="closeCalDayModal">Huỷ</button>
-          <button type="submit" class="btn btn-primary">Lưu &amp; gửi duyệt</button>
+          <button type="submit" class="btn btn-primary">${isOnBehalf ? 'Lưu' : 'Lưu & gửi duyệt'}</button>
         </div>
       </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Calendar day VIEW modal (managers: click a day to see who's working) ---- */
+function renderCalDayViewModal(){
+  const cv = state.calDayViewModal; if(!cv) return '';
+  const interns = USERS.filter(x=>x.role==='intern');
+  const rowsHtml = interns.map(iu=>{
+    const entry = normalizeDayEntry(SCHEDULE[iu.id] && SCHEDULE[iu.id][cv.date]);
+    return `
+      <div class="reg-item">
+        <div class="top"><b>${escapeHtml(iu.name)}</b>${entry ? statusPillHtml(entry.status) : '<span class="cal-self-tag none">Chưa đăng ký</span>'}</div>
+        ${entry ? shiftBadgesHtml(entry) : ''}
+        ${entry && entry.reason?`<div class="reason">Lý do: ${escapeHtml(entry.reason)}</div>`:''}
+        <div class="leave-req-actions">
+          <button class="btn btn-sm btn-ghost" data-action="openCalDayEditFor" data-edituser="${iu.id}" data-editdate="${cv.date}">Sửa</button>
+          ${entry ? `<button class="btn btn-sm btn-ghost" style="color:var(--danger)" data-action="askDeleteRegistration" data-eduser="${iu.id}" data-eddate="${cv.date}">Xoá</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  return `
+  <div class="modal-bg" data-close="caldayviewmodal">
+    <div class="modal" data-stop="1" style="max-width:480px;">
+      <div class="modal-head"><h2>Ngày ${fmtDateFull(cv.date)}</h2><button class="modal-close" data-action="closeCalDayViewModal">✕</button></div>
+      <div class="modal-body">
+        <div class="leave-req">${rowsHtml || '<div style="font-size:12.5px;color:var(--ink-faint)">Chưa có thực tập sinh nào.</div>'}</div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-action="closeCalDayViewModal">Đóng</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1956,6 +2027,33 @@ function attachHandlers(){
     state.showTaskForm=false; render();
   });
 
+  app.querySelectorAll('[data-action="openEditTask"]').forEach(b=>b.addEventListener('click', ()=>{ state.editTaskModal=b.dataset.taskid; render(); }));
+  app.querySelectorAll('[data-action="closeEditTask"]').forEach(b=>b.addEventListener('click', ()=>{ state.editTaskModal=null; render(); }));
+  app.querySelectorAll('[data-close="edittaskmodal"]').forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ state.editTaskModal=null; render(); } }));
+
+  const editTaskForm = document.getElementById('editTaskForm');
+  if(editTaskForm) editTaskForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const t = getTaskById(state.editTaskModal); if(!t) return;
+    const newAssignee = document.getElementById('etAssignee').value || t.assignee;
+    const patch = {
+      keyword: document.getElementById('etKeyword').value.trim(),
+      type: document.getElementById('etType').value,
+      assignee: newAssignee,
+      deadline: document.getElementById('etDeadline').value,
+      desc: document.getElementById('etDesc').value,
+    };
+    const changed = [];
+    if(patch.keyword !== t.keyword) changed.push('từ khoá');
+    if(patch.type !== t.type) changed.push('phân loại');
+    if(patch.assignee !== t.assignee) changed.push(`nhân sự (→ ${byId(newAssignee).name})`);
+    if(patch.deadline !== t.deadline) changed.push('deadline');
+    if(patch.desc !== (t.desc||'')) changed.push('mô tả');
+    const newHistory = [...(t.history||[]), {t:todayDMY(), text: changed.length ? `Quản lý sửa task: ${changed.join(', ')}` : 'Quản lý cập nhật task (không đổi nội dung)'}];
+    await dbApi.collection('tasks').doc(t.id).update({...patch, history:newHistory});
+    state.editTaskModal=null; render();
+  });
+
   app.querySelectorAll('[data-taskaction]').forEach(b=>b.addEventListener('click', async ()=>{
     const t = getTaskById(state.openTaskId); if(!t) return;
     const act = b.dataset.taskaction;
@@ -1986,24 +2084,43 @@ function attachHandlers(){
     const sm = state.submitModal; const t = getTaskById(sm.taskId); if(!t) return;
     const link = document.getElementById('submitLink').value.trim();
     const note = document.getElementById('submitNote').value.trim();
-    if(!link) return;
+    const finalLink = link || t.fileLink || ''; // giữ link cũ nếu nộp lại mà bỏ trống ô link
     const isResubmit = sm.mode==='resubmit';
     const newStatus = isResubmit ? 'fixed' : 'review';
     const histText = isResubmit ? 'Đã sửa xong, chuyển "Đã sửa"' : 'Nộp bài, chuyển "Đợi duyệt"';
     const newHistory = [...(t.history||[]), {t:todayDMY(), text:histText}];
-    const commentText = note ? `${note}\nLink: ${link}` : `Đã nộp bài: ${link}`;
+    const commentText = [note, finalLink ? `Link: ${finalLink}` : ''].filter(Boolean).join('\n') || 'Đã nộp bài (không kèm link/ghi chú).';
     const newComments = [...(t.comments||[]), {id:'c'+Date.now(), authorId:state.authedUser.id, authorName:state.authedUser.name, text:commentText, createdAt:nowISOTime()}];
-    await dbApi.collection('tasks').doc(t.id).update({ status:newStatus, fileLink:link, history:newHistory, comments:newComments });
-    // Đẩy link + tên nhân sự vào cột U/V Google Sheet MỖI LẦN nộp link để chờ
-    // duyệt — dù là nộp lần đầu (Đợi duyệt) hay nộp lại sau khi "Cần sửa"
-    // (Đã sửa) — không bao giờ được bỏ bước này.
-    try{
-      await dbApi.collection('sheetQueue').add({
-        taskId:t.id, taskLabel:taskLabel(t), taskKeyword:t.keyword, link,
-        employeeId:state.authedUser.id, employeeName:state.authedUser.name,
-        submittedAt: nowISOTime(),
-      });
-    }catch(err){ /* queueing best-effort; the task update above already succeeded */ }
+    await dbApi.collection('tasks').doc(t.id).update({ status:newStatus, fileLink:finalLink, history:newHistory, comments:newComments });
+    // Đồng bộ TOÀN BỘ thông tin task sang Google Sheet (1 dòng mới cuối sheet)
+    // MỖI LẦN nộp link để chờ duyệt — dù là nộp lần đầu (Đợi duyệt) hay nộp
+    // lại sau khi "Cần sửa" (Đã sửa) — không bao giờ được bỏ bước này. Chỉ
+    // đẩy khi thực sự CÓ link (link không bắt buộc nữa nên có thể rỗng —
+    // backend cũng tự bỏ qua nếu rỗng, nhưng bỏ qua từ đây luôn để không tạo
+    // dòng chờ vô ích).
+    if(finalLink){
+      const assignedByUser = byId(t.assignedBy);
+      try{
+        await dbApi.collection('sheetQueue').add({
+          taskId:t.id, taskLabel:taskLabel(t), taskKeyword:t.keyword, link:finalLink,
+          employeeId:state.authedUser.id, employeeName:state.authedUser.name,
+          submittedAt: nowISOTime(),
+          payload: {
+            submittedAt: nowISOTime(),
+            keyword: t.keyword,
+            type: TYPE_META[t.type] ? TYPE_META[t.type].label : (t.type||''),
+            employeeName: state.authedUser.name,
+            assignedByName: assignedByUser ? assignedByUser.name : '',
+            createdAt: t.createdAt,
+            deadline: t.deadline,
+            statusLabel: STATUS_META[newStatus] ? STATUS_META[newStatus].label : newStatus,
+            link: finalLink,
+            desc: t.desc || '',
+            note: note || t.note || '',
+          },
+        });
+      }catch(err){ /* queueing best-effort; the task update above already succeeded */ }
+    }
     state.submitModal = null;
     render();
   });
@@ -2030,6 +2147,12 @@ function attachHandlers(){
       catch(err){ alert('Không xoá được: ' + (err.message||err)); }
     }
     if(cm.onConfirm==='deleteTask'){ await dbApi.collection('tasks').doc(cm.payload).delete(); state.openTaskId=null; }
+    if(cm.onConfirm==='deleteRegistration'){
+      const {uid, date} = cm.payload;
+      const daysObj = {...(SCHEDULE[uid]||{})};
+      delete daysObj[date];
+      await dbApi.collection('schedule').doc(uid).set({days:daysObj});
+    }
     state.confirmModal=null; render();
   }));
 
@@ -2092,7 +2215,21 @@ function attachHandlers(){
   });
 
   app.querySelectorAll('[data-calday]').forEach(cell=>cell.addEventListener('click', ()=>{
-    state.calDayModal = {date: cell.dataset.calday}; render();
+    const iso = cell.dataset.calday;
+    if(state.authedUser.role==='intern'){ state.calDayModal = {date: iso}; }
+    else { state.calDayViewModal = {date: iso}; }
+    render();
+  }));
+  app.querySelectorAll('[data-action="openCalDayEditFor"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.calDayModal = {date: b.dataset.editdate, userId: b.dataset.edituser, fromView:true};
+    state.calDayViewModal = null;
+    render();
+  }));
+  app.querySelectorAll('[data-action="askDeleteRegistration"]').forEach(b=>b.addEventListener('click', ()=>{
+    const uid = b.dataset.eduser, date = b.dataset.eddate;
+    const person = byId(uid);
+    state.confirmModal = {title:'Xoá đăng ký lịch', message:`Xoá đăng ký ngày ${fmtDateFull(date)} của "${person.name}"? Thao tác này không thể hoàn tác.`, confirmLabel:'Xoá', onConfirm:'deleteRegistration', payload:{uid,date}};
+    render();
   }));
   app.querySelectorAll('[data-shiftpick]').forEach(b=>b.addEventListener('click', ()=>{
     const key = b.dataset.shiftpick; // 'morning' | 'afternoon'
@@ -2104,7 +2241,9 @@ function attachHandlers(){
   const calDayForm = document.getElementById('calDayForm');
   if(calDayForm) calDayForm.addEventListener('submit', async e=>{
     e.preventDefault();
-    const cd = state.calDayModal; const uid = state.authedUser.id;
+    const cd = state.calDayModal;
+    const uid = cd.userId || state.authedUser.id;
+    const isOnBehalf = !!cd.userId && cd.userId !== state.authedUser.id;
     const morning = document.getElementById('shiftMorning').value || null;
     const afternoon = document.getElementById('shiftAfternoon').value || null;
     const reason = document.getElementById('leaveReason').value.trim();
@@ -2112,10 +2251,11 @@ function attachHandlers(){
     if(!morning && !afternoon){
       delete daysObj[cd.date];
     } else {
-      daysObj[cd.date] = { morning, afternoon, reason, status:'pending', submittedAt: nowISOTime() };
+      daysObj[cd.date] = { morning, afternoon, reason, status: isOnBehalf ? 'approved' : 'pending', submittedAt: nowISOTime() };
     }
     await dbApi.collection('schedule').doc(uid).set({days:daysObj});
     state.calDayModal = null;
+    if(cd.fromView) state.calDayViewModal = {date: cd.date};
     render();
   });
 
@@ -2249,7 +2389,8 @@ function attachHandlers(){
     closeSubmitModal: ()=>state.submitModal=null,
     closeFixModal: ()=>state.fixModal=null,
     closeConfirmModal: ()=>state.confirmModal=null,
-    closeCalDayModal: ()=>state.calDayModal=null,
+    closeCalDayModal: ()=>{ const cd=state.calDayModal; state.calDayModal=null; if(cd && cd.fromView) state.calDayViewModal={date:cd.date}; },
+    closeCalDayViewModal: ()=>state.calDayViewModal=null,
     closePersonModal: ()=>state.personModal=false,
     closeResetPwModal: ()=>state.resetPwModal=null,
     closeBulkPersonModal: ()=>state.bulkPersonModal=false,
@@ -2261,7 +2402,8 @@ function attachHandlers(){
     submitmodal: ()=>state.submitModal=null,
     fixmodal: ()=>state.fixModal=null,
     confirmmodal: ()=>state.confirmModal=null,
-    caldaymodal: ()=>state.calDayModal=null,
+    caldaymodal: ()=>{ const cd=state.calDayModal; state.calDayModal=null; if(cd && cd.fromView) state.calDayViewModal={date:cd.date}; },
+    caldayviewmodal: ()=>state.calDayViewModal=null,
     personmodal: ()=>state.personModal=false,
     resetpwmodal: ()=>state.resetPwModal=null,
     bulkpersonmodal: ()=>state.bulkPersonModal=false,
