@@ -576,15 +576,13 @@ const STATUS_META = {
   assigned:{label:'Giao việc', short:'Giao việc'},
   in_progress:{label:'Đang thực hiện', short:'Đang làm'},
   review:{label:'Đợi duyệt', short:'Đợi duyệt'},
-  fix:{label:'Cần sửa', short:'Cần sửa'},
-  fixed:{label:'Đã sửa', short:'Đã sửa'},
   approved:{label:'Đã duyệt', short:'Đã duyệt'},
 };
-const STATUS_ORDER = ['assigned','in_progress','review','fix','fixed','approved'];
-// Which statuses a Manager/Admin can act on from the task modal — both the
-// first submission (review) and a resubmission after "Cần sửa" (fixed) land
-// in the manager's queue the same way.
-const PENDING_REVIEW_STATUSES = ['review','fixed'];
+const STATUS_ORDER = ['assigned','in_progress','review','approved'];
+// Manager/Admin duyệt hoặc từ chối ngay từ trạng thái "Đợi duyệt" — không
+// còn "Cần sửa"/"Đã sửa" riêng, từ chối sẽ đưa task quay lại "Đang thực
+// hiện" để nhân sự sửa rồi nộp lại (cũng là in_progress → review).
+const PENDING_REVIEW_STATUSES = ['review'];
 const TYPE_META = {
   New:   {label:'New',  cls:'new'},
   Audit: {label:'Audit',cls:'audit'},
@@ -622,9 +620,10 @@ let state = {
   confirmModal:null,  // {title, message, confirmLabel, onConfirm, payload}
   calDayModal:null,   // {date}
   personModal:false,
+  editPersonModal:null, // {uid, name, title, email}
   resetPwModal:null,  // {uid, name}
   bulkPersonModal:false,
-  bulkRows:[],        // [{name, role, title, username, password}]
+  bulkRows:[],        // [{name, role, title, username, password, email}]
   bulkResult:null,    // {successCount, errors:[string]}
   notifOpen:false,
   reportsRange:'this_week', // 'this_week'|'last_week'|'this_month'|'last_month'|'custom'
@@ -646,6 +645,35 @@ function fmtDateFull(iso){ const parts=(iso||'').split('-'); if(parts.length<3) 
 function fmtDateTime(iso){ try{ const d=new Date(iso); return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }catch(e){ return ''; } }
 function isManagerOrAdmin(u){ return u && (u.role==='admin'||u.role==='manager'); }
 function taskLabel(t){ return 'T-' + String(t.taskNo!=null ? t.taskNo : String(t.id).slice(-5)).padStart(4,'0'); }
+// Đồng bộ TOÀN BỘ thông tin task sang Google Sheet — mỗi task giữ đúng 1
+// dòng, được ghi lần đầu lúc "Đợi duyệt" rồi CẬP NHẬT lại đúng dòng đó ở
+// những lần sau (nộp lại sau khi bị yêu cầu sửa, và lúc "Đã duyệt") — xử lý
+// gộp dòng do Edge Function push-to-sheet đảm nhiệm qua cột tasks.sheet_row,
+// ở đây chỉ cần enqueue best-effort, không bao giờ được chặn luồng chính.
+async function enqueueSheetSync(t, statusLabel, extraNote){
+  const assignedByUser = byId(t.assignedBy);
+  const assigneeUser = byId(t.assignee);
+  try{
+    await dbApi.collection('sheetQueue').add({
+      taskId:t.id, taskLabel:taskLabel(t), taskKeyword:t.keyword, link:t.fileLink||'',
+      employeeId:t.assignee, employeeName:assigneeUser.name,
+      submittedAt: nowISOTime(),
+      payload: {
+        submittedAt: nowISOTime(),
+        keyword: t.keyword,
+        type: TYPE_META[t.type] ? TYPE_META[t.type].label : (t.type||''),
+        employeeName: assigneeUser.name,
+        assignedByName: assignedByUser ? assignedByUser.name : '',
+        createdAt: t.createdAt,
+        deadline: t.deadline,
+        statusLabel: statusLabel,
+        link: t.fileLink || '',
+        desc: t.desc || '',
+        note: extraNote || t.note || '',
+      },
+    });
+  }catch(err){ /* queueing best-effort; the task update that triggered this already succeeded */ }
+}
 function escapeHtml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function linkify(s){ return s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
 function defaultDeadline(){ const d=new Date(); d.setDate(d.getDate()+7); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
@@ -682,8 +710,8 @@ function weekRangeLabel(mondayIso){ return `${fmtDate(mondayIso)} – ${fmtDate(
 /* Fill this in with your own project's values (Supabase Dashboard → Project
    Settings → API). The anon key is NOT a secret — access control is
    enforced by Row Level Security policies + Auth, not by hiding this key. */
-const SUPABASE_URL = "https://dsrzydaaowflvfvaxfkh.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcnp5ZGFhb3dmbHZmdmF4ZmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzNzE5MDksImV4cCI6MjEwNDk0NzkwOX0.vVJMhRMf7b4wzqHIzcWepd3k5eBUx6c0id3I8i5fLFY";
+const SUPABASE_URL = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcnp5ZGFhb3dmbHZmdmF4ZmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzNzE5MDksImV4cCI6MjEwNDk0NzkwOX0.vVJMhRMf7b4wzqHIzcWepd3k5eBUx6c0id3I8i5fLFY";
+const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
 const LOGIN_EMAIL_DOMAIN = 'seoopshub.internal'; // must match supabase/functions/_shared/admin.ts
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -708,7 +736,7 @@ async function callFn(name, payload){
    the subscription wiring differ between backends. */
 const FIELD_MAP = {
   tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
-  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined' },
+  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
   sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at', payload:'payload' },
@@ -1165,7 +1193,7 @@ function renderTasksPage(u){
   const backlogList = backlogTasks(u);
   const activeList = state.taskTab==='backlog' ? backlogList : weekList;
 
-  const inProgressCount = activeList.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
+  const inProgressCount = activeList.filter(t=>['in_progress','review'].includes(t.status)).length;
   const reviewCount = activeList.filter(t=>PENDING_REVIEW_STATUSES.includes(t.status)).length;
   const overdueCount = activeList.filter(t=>isOverdue(t.deadline,t.status)).length;
 
@@ -1185,7 +1213,7 @@ function renderTasksPage(u){
 
     <div class="section-title">
       <div></div>
-      ${u.role!=='intern' ? `<button class="btn btn-primary" data-action="openTaskForm">+ Tạo Task</button>` : ''}
+      <button class="btn btn-primary" data-action="openTaskForm">+ Tạo Task</button>
     </div>
 
     <div class="tabbar">
@@ -1261,14 +1289,16 @@ function renderTaskModal(t,u){
   const mine = u.id===t.assignee;
   const canManage = isManagerOrAdmin(u);
   let actions = '';
-  if(mine && !canManage){
-    if(t.status==='assigned') actions = `<button class="btn btn-primary" data-taskaction="start">Bắt đầu làm</button>`;
-    if(t.status==='in_progress') actions = `<button class="btn btn-primary" data-taskaction="submit">Nộp bài — chuyển Đợi duyệt</button>`;
-    if(t.status==='fix') actions = `<button class="btn btn-primary" data-taskaction="resubmit">Đã sửa xong</button>`;
+  // "mine" và "canManage" không còn loại trừ nhau — từ khi cho phép tự tạo
+  // task giao cho chính mình, 1 người (kể cả Manager/Admin) có thể vừa là
+  // người làm vừa là người duyệt task đó, nên cộng dồn action của cả 2 vai.
+  if(mine){
+    if(t.status==='assigned') actions += `<button class="btn btn-primary" data-taskaction="start">Bắt đầu làm</button>`;
+    if(t.status==='in_progress') actions += `<button class="btn btn-primary" data-taskaction="submit">Nộp bài — chuyển Đợi duyệt</button>`;
   }
   if(canManage){
     if(PENDING_REVIEW_STATUSES.includes(t.status)){
-      actions = `<button class="btn" style="border-color:var(--st-fix);color:var(--st-fix);" data-taskaction="requestfix">Cần sửa</button>
+      actions += `<button class="btn" style="border-color:var(--st-fix);color:var(--st-fix);" data-taskaction="requestfix">Yêu cầu sửa lại</button>
                  <button class="btn btn-primary" data-taskaction="approve">Duyệt đạt</button>`;
     }
     actions += `<button class="btn btn-ghost btn-sm" data-action="openEditTask" data-taskid="${t.id}">Sửa task</button>`;
@@ -1375,6 +1405,13 @@ function renderConfirmModal(){
 /* ---- Task create form modal ---- */
 function renderTaskFormModal(u){
   const interns = USERS.filter(x=>x.role==='intern');
+  // Ai cũng tự tạo task giao cho CHÍNH MÌNH được (kể cả thực tập sinh);
+  // riêng Manager/Admin thì thêm được cả các thực tập sinh khác vào lựa chọn.
+  const isManager = isManagerOrAdmin(u);
+  const assigneeOptions = [
+    {id:u.id, name:`${u.name} (chính bạn)`},
+    ...(isManager ? interns.filter(i=>i.id!==u.id) : []),
+  ];
   return `
   <div class="modal-bg" data-close="taskform">
     <div class="modal" data-stop="1">
@@ -1384,14 +1421,14 @@ function renderTaskFormModal(u){
           <div class="field"><label>Keyword / Chủ đề</label><input type="text" id="ntKeyword" required placeholder="vd: Cách chọn gói cước phù hợp"></div>
           <div class="form-grid">
             <div class="field"><label>Phân loại bài</label><select id="ntType">${TYPE_ORDER.map(t=>`<option value="${t}">${TYPE_META[t].label}</option>`).join('')}</select></div>
-            <div class="field"><label>Nhân sự thực hiện</label><select id="ntAssignee" ${interns.length===0?'disabled':''}>${interns.length===0?'<option>Chưa có thực tập sinh</option>':interns.map(i=>`<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('')}</select></div>
+            <div class="field"><label>Nhân sự thực hiện</label><select id="ntAssignee">${assigneeOptions.map(i=>`<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('')}</select></div>
           </div>
           <div class="field"><label>Deadline</label><input type="date" id="ntDeadline" required value="${defaultDeadline()}"></div>
           <div class="field"><label>Mô tả công việc</label><textarea id="ntDesc" placeholder="Yêu cầu nội dung, cấu trúc, lưu ý..."></textarea></div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn btn-ghost" data-action="closeTaskForm">Huỷ</button>
-          <button type="submit" class="btn btn-primary" ${interns.length===0?'disabled':''}>Giao việc</button>
+          <button type="submit" class="btn btn-primary">Giao việc</button>
         </div>
       </form>
     </div>
@@ -1403,6 +1440,12 @@ function renderEditTaskModal(){
   const taskId = state.editTaskModal; if(!taskId) return '';
   const t = getTaskById(taskId); if(!t) return '';
   const interns = USERS.filter(x=>x.role==='intern');
+  // Task giờ có thể tự tạo cho chính mình (kể cả Manager/Admin tự giao cho
+  // bản thân) — nếu người đang thực hiện task không nằm trong danh sách
+  // thực tập sinh, vẫn phải đưa họ vào lựa chọn, không thì lưu sẽ vô tình
+  // đổi người thực hiện.
+  const currentAssignee = byId(t.assignee);
+  const assigneeOptions = interns.some(i=>i.id===t.assignee) ? interns : [currentAssignee, ...interns];
   return `
   <div class="modal-bg" data-close="edittaskmodal">
     <div class="modal" data-stop="1">
@@ -1412,7 +1455,7 @@ function renderEditTaskModal(){
           <div class="field"><label>Keyword / Chủ đề</label><input type="text" id="etKeyword" required value="${escapeHtml(t.keyword)}"></div>
           <div class="form-grid">
             <div class="field"><label>Phân loại bài</label><select id="etType">${TYPE_ORDER.map(ty=>`<option value="${ty}" ${t.type===ty?'selected':''}>${TYPE_META[ty].label}</option>`).join('')}</select></div>
-            <div class="field"><label>Nhân sự thực hiện</label><select id="etAssignee" ${interns.length===0?'disabled':''}>${interns.map(i=>`<option value="${i.id}" ${t.assignee===i.id?'selected':''}>${escapeHtml(i.name)}</option>`).join('')}</select></div>
+            <div class="field"><label>Nhân sự thực hiện</label><select id="etAssignee">${assigneeOptions.map(i=>`<option value="${i.id}" ${t.assignee===i.id?'selected':''}>${escapeHtml(i.name)}</option>`).join('')}</select></div>
           </div>
           <div class="field"><label>Deadline</label><input type="date" id="etDeadline" required value="${t.deadline}"></div>
           <div class="field"><label>Mô tả công việc</label><textarea id="etDesc">${escapeHtml(t.desc||'')}</textarea></div>
@@ -1697,7 +1740,7 @@ function renderReportsPage(u){
     const own = inRange.filter(t=>t.assignee===iu.id);
     const done = own.filter(t=>t.status==='approved').length;
     const late = own.filter(t=>isOverdue(t.deadline,t.status)).length;
-    const doing = own.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
+    const doing = own.filter(t=>['in_progress','review'].includes(t.status)).length;
     const lateRate = own.length ? Math.round((late/own.length)*100) : 0;
     return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own), lateRate};
   });
@@ -1726,8 +1769,8 @@ function renderReportsPage(u){
 
   const watchItems = [];
   if(overdueAll.length>0) watchItems.push(`${overdueAll.length} task đang trễ deadline tính đến hôm nay, ưu tiên nhắc nhân sự phụ trách.`);
-  const stuckFix = TASKS.filter(t=>t.status==='fix').length;
-  if(stuckFix>0) watchItems.push(`${stuckFix} task đang ở trạng thái "Cần sửa", theo dõi để nhân sự cập nhật lại.`);
+  const pendingReviewCount = TASKS.filter(t=>t.status==='review').length;
+  if(pendingReviewCount>0) watchItems.push(`${pendingReviewCount} task đang ở trạng thái "Đợi duyệt", ưu tiên duyệt hoặc yêu cầu sửa sớm.`);
   watchItems.push(`Tỷ lệ đạt duyệt lần đầu kỳ này ${firstPassRate}% — ${firstPassRate>=80?'đang tốt, duy trì brief rõ ràng.':'thấp hơn mục tiêu 80%, nên rà lại brief giao việc.'}`);
 
   return `
@@ -1847,7 +1890,7 @@ function renderPeoplePage(u){
     </div>
     <div class="panel">
       <div class="scrollx"><table class="data-table">
-        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản</th><th>Ngày tham gia</th><th></th></tr></thead>
+        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
         <tbody>
           ${USERS.map(p=>`<tr>
             <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(p.name)}</span>${escapeHtml(p.name)}</td>
@@ -1860,19 +1903,49 @@ function renderPeoplePage(u){
             </td>
             <td>${escapeHtml(p.title||'')}</td>
             <td class="num-cell">${escapeHtml(p.username)}</td>
+            <td>${p.email ? escapeHtml(p.email) : `<span style="color:var(--danger);font-size:11.5px;">Chưa có</span>`}</td>
             <td class="num-cell">${p.joined||''}</td>
             <td style="display:flex;gap:6px;justify-content:flex-end;">
+              <button class="btn btn-ghost btn-sm" data-editperson="${p.id}">Sửa</button>
               <button class="btn btn-ghost btn-sm" data-resetpw="${p.id}" data-personname="${escapeHtml(p.name)}">Đặt lại mật khẩu</button>
               ${p.id===u.id?'':`<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-removeuser="${p.id}">Xoá</button>`}
             </td>
           </tr>`).join('')}
         </tbody>
       </table></div>
-      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn.</div>
+      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn. Cần nhập "Email nhận thông báo" (email thật) thì người đó mới nhận được mail khi được giao task / có bài chờ duyệt / được duyệt bài.</div>
     </div>
     ${state.resetPwModal ? renderResetPwModal() : ''}
     ${state.bulkPersonModal ? renderBulkPersonModal() : ''}
+    ${state.editPersonModal ? renderEditPersonModal() : ''}
   `;
+}
+/* ---- Edit an EXISTING person (name / title / email nhận thông báo) ---- */
+function renderEditPersonModal(){
+  const m = state.editPersonModal; if(!m) return '';
+  return `
+  <div class="modal-bg" data-close="editpersonmodal">
+    <div class="modal" data-stop="1">
+      <div class="modal-head"><h2>Sửa thông tin nhân sự</h2><button class="modal-close" data-action="closeEditPersonModal">✕</button></div>
+      <form id="editPersonForm">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Họ tên</label><input type="text" id="epName" required value="${escapeHtml(m.name)}"></div>
+            <div class="field"><label>Chức danh</label><input type="text" id="epTitle" placeholder="vd: Thực tập sinh Content" value="${escapeHtml(m.title||'')}"></div>
+          </div>
+          <div class="field">
+            <label>Email nhận thông báo</label>
+            <input type="email" id="epEmail" placeholder="vd: an.nguyen@gmail.com" value="${escapeHtml(m.email||'')}">
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Đây là email THẬT để nhận thông báo — khác với tài khoản đăng nhập. Để trống thì người này sẽ không nhận được email thông báo.</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-action="closeEditPersonModal">Huỷ</button>
+          <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
 }
 function renderResetPwModal(){
   const m = state.resetPwModal; if(!m) return '';
@@ -1907,7 +1980,7 @@ function renderBulkPersonModal(){
         <div class="modal-body">
           <div style="font-size:12px;color:var(--ink-muted);">Điền từng dòng 1 người. Dòng nào để trống hoàn toàn sẽ tự bỏ qua. Bấm "+ Thêm dòng" nếu cần nhiều hơn.</div>
           <div class="scrollx"><table class="data-table" style="min-width:680px;">
-            <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản đăng nhập</th><th>Mật khẩu</th><th></th></tr></thead>
+            <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản đăng nhập</th><th>Mật khẩu</th><th>Email nhận thông báo</th><th></th></tr></thead>
             <tbody>
               ${rows.map((r,i)=>`<tr>
                 <td><input type="text" id="bulk_name_${i}" data-bulkfield="name" data-bulkidx="${i}" value="${escapeHtml(r.name)}" placeholder="Họ tên" style="min-width:120px;"></td>
@@ -1919,6 +1992,7 @@ function renderBulkPersonModal(){
                 <td><input type="text" id="bulk_title_${i}" data-bulkfield="title" data-bulkidx="${i}" value="${escapeHtml(r.title)}" placeholder="vd: TTS Content" style="min-width:120px;"></td>
                 <td><input type="text" id="bulk_username_${i}" data-bulkfield="username" data-bulkidx="${i}" value="${escapeHtml(r.username)}" placeholder="vd: an.nguyen" style="min-width:110px;"></td>
                 <td><input type="text" id="bulk_password_${i}" data-bulkfield="password" data-bulkidx="${i}" value="${escapeHtml(r.password)}" placeholder="Mật khẩu" style="min-width:100px;"></td>
+                <td><input type="email" id="bulk_email_${i}" data-bulkfield="email" data-bulkidx="${i}" value="${escapeHtml(r.email||'')}" placeholder="an.nguyen@gmail.com" style="min-width:150px;"></td>
                 <td><button type="button" class="btn btn-ghost btn-sm" data-bulkremove="${i}" style="color:var(--danger);">✕</button></td>
               </tr>`).join('')}
             </tbody>
@@ -1962,6 +2036,11 @@ function renderPersonModal(){
             <div class="field"><label>Tài khoản đăng nhập</label><input type="text" id="pUsername" required placeholder="vd: an.nguyen"></div>
           </div>
           <div class="field"><label>Mật khẩu</label><input type="text" id="pPassword" required placeholder="Đặt mật khẩu ban đầu"></div>
+          <div class="field">
+            <label>Email nhận thông báo</label>
+            <input type="email" id="pEmail" placeholder="vd: an.nguyen@gmail.com">
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Email THẬT để nhận thông báo (khác với tài khoản đăng nhập ở trên). Có thể để trống rồi bổ sung sau ở nút "Sửa".</div>
+          </div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn btn-ghost" data-action="closePersonModal">Huỷ</button>
@@ -2021,7 +2100,7 @@ function attachHandlers(){
       deadline: document.getElementById('ntDeadline').value,
       createdAt: todayISO(), status:'assigned', fileLink:'',
       desc: document.getElementById('ntDesc').value || '(không có mô tả thêm)',
-      history:[{t:todayDMY(), text:`Giao việc cho ${byId(assignee).name}`}],
+      history:[{t:todayDMY(), text: assignee===state.authedUser.id ? 'Tự tạo task cho bản thân' : `Giao việc cho ${byId(assignee).name}`}],
       comments:[],
     });
     state.showTaskForm=false; render();
@@ -2067,6 +2146,9 @@ function attachHandlers(){
     if(act==='approve'){
       const newHistory=[...(t.history||[]), {t:todayDMY(), text:'Quản lý duyệt đạt'}];
       await dbApi.collection('tasks').doc(t.id).update({status:'approved', history:newHistory});
+      // Cập nhật lại đúng dòng đã có trên Google Sheet (trạng thái -> Đã
+      // duyệt) — không tạo dòng mới, xem enqueueSheetSync().
+      await enqueueSheetSync({...t, status:'approved'}, STATUS_META.approved.label);
     }
   }));
 
@@ -2086,41 +2168,18 @@ function attachHandlers(){
     const note = document.getElementById('submitNote').value.trim();
     const finalLink = link || t.fileLink || ''; // giữ link cũ nếu nộp lại mà bỏ trống ô link
     const isResubmit = sm.mode==='resubmit';
-    const newStatus = isResubmit ? 'fixed' : 'review';
-    const histText = isResubmit ? 'Đã sửa xong, chuyển "Đã sửa"' : 'Nộp bài, chuyển "Đợi duyệt"';
+    // Không còn trạng thái "Đã sửa" riêng — nộp lần đầu hay nộp lại sau khi
+    // bị yêu cầu sửa đều chuyển thẳng về "Đợi duyệt" (in_progress -> review).
+    const newStatus = 'review';
+    const histText = isResubmit ? 'Đã sửa và nộp lại, chuyển "Đợi duyệt"' : 'Nộp bài, chuyển "Đợi duyệt"';
     const newHistory = [...(t.history||[]), {t:todayDMY(), text:histText}];
     const commentText = [note, finalLink ? `Link: ${finalLink}` : ''].filter(Boolean).join('\n') || 'Đã nộp bài (không kèm link/ghi chú).';
     const newComments = [...(t.comments||[]), {id:'c'+Date.now(), authorId:state.authedUser.id, authorName:state.authedUser.name, text:commentText, createdAt:nowISOTime()}];
     await dbApi.collection('tasks').doc(t.id).update({ status:newStatus, fileLink:finalLink, history:newHistory, comments:newComments });
-    // Đồng bộ TOÀN BỘ thông tin task sang Google Sheet (1 dòng mới cuối sheet)
-    // MỖI LẦN nộp link để chờ duyệt — dù là nộp lần đầu (Đợi duyệt) hay nộp
-    // lại sau khi "Cần sửa" (Đã sửa) — không bao giờ được bỏ bước này. Chỉ
-    // đẩy khi thực sự CÓ link (link không bắt buộc nữa nên có thể rỗng —
-    // backend cũng tự bỏ qua nếu rỗng, nhưng bỏ qua từ đây luôn để không tạo
-    // dòng chờ vô ích).
-    if(finalLink){
-      const assignedByUser = byId(t.assignedBy);
-      try{
-        await dbApi.collection('sheetQueue').add({
-          taskId:t.id, taskLabel:taskLabel(t), taskKeyword:t.keyword, link:finalLink,
-          employeeId:state.authedUser.id, employeeName:state.authedUser.name,
-          submittedAt: nowISOTime(),
-          payload: {
-            submittedAt: nowISOTime(),
-            keyword: t.keyword,
-            type: TYPE_META[t.type] ? TYPE_META[t.type].label : (t.type||''),
-            employeeName: state.authedUser.name,
-            assignedByName: assignedByUser ? assignedByUser.name : '',
-            createdAt: t.createdAt,
-            deadline: t.deadline,
-            statusLabel: STATUS_META[newStatus] ? STATUS_META[newStatus].label : newStatus,
-            link: finalLink,
-            desc: t.desc || '',
-            note: note || t.note || '',
-          },
-        });
-      }catch(err){ /* queueing best-effort; the task update above already succeeded */ }
-    }
+    // Đồng bộ TOÀN BỘ thông tin task sang Google Sheet MỖI LẦN nộp để chờ
+    // duyệt — dù nộp lần đầu hay nộp lại sau khi bị yêu cầu sửa — không bao
+    // giờ được bỏ bước này (ghi vào đúng 1 dòng của task, xem enqueueSheetSync()).
+    await enqueueSheetSync({...t, status:newStatus, fileLink:finalLink}, STATUS_META[newStatus].label, note);
     state.submitModal = null;
     render();
   });
@@ -2130,8 +2189,12 @@ function attachHandlers(){
     e.preventDefault();
     const fm = state.fixModal; const t = getTaskById(fm.taskId); if(!t) return;
     const note = document.getElementById('fixNote').value.trim();
-    const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa'}];
-    await dbApi.collection('tasks').doc(t.id).update({status:'fix', note, history:newHistory});
+    // Không còn trạng thái "Cần sửa" riêng — quản lý yêu cầu sửa sẽ đưa task
+    // quay lại "Đang thực hiện" để nhân sự sửa rồi nộp lại (in_progress ->
+    // review), giữ nguyên cụm "yêu cầu sửa" trong lịch sử vì báo cáo
+    // (firstPassRateOf) đang dò chuỗi này để tính tỷ lệ đạt duyệt lần đầu.
+    const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa, chuyển về "Đang thực hiện"'}];
+    await dbApi.collection('tasks').doc(t.id).update({status:'in_progress', note, history:newHistory});
     state.fixModal = null;
     render();
   });
@@ -2298,10 +2361,36 @@ function attachHandlers(){
         title: document.getElementById('pTitle').value.trim(),
         username: document.getElementById('pUsername').value.trim(),
         password: document.getElementById('pPassword').value,
+        email: document.getElementById('pEmail').value.trim(),
       });
       state.personModal = false;
     }catch(err){
       alert('Không thêm được nhân sự: ' + (err.message||err));
+    }
+    if(btn) btn.disabled = false;
+    render();
+  });
+
+  app.querySelectorAll('[data-editperson]').forEach(b=>b.addEventListener('click', ()=>{
+    const person = byId(b.dataset.editperson); if(!person) return;
+    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||''};
+    render();
+  }));
+  const editPersonForm = document.getElementById('editPersonForm');
+  if(editPersonForm) editPersonForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn = editPersonForm.querySelector('button[type="submit"]');
+    if(btn) btn.disabled = true;
+    try{
+      await callFn('update-team-member', {
+        uid: state.editPersonModal.uid,
+        name: document.getElementById('epName').value.trim(),
+        title: document.getElementById('epTitle').value.trim(),
+        email: document.getElementById('epEmail').value.trim(),
+      });
+      state.editPersonModal = null;
+    }catch(err){
+      alert('Không lưu được thông tin: ' + (err.message||err));
     }
     if(btn) btn.disabled = false;
     render();
@@ -2329,19 +2418,19 @@ function attachHandlers(){
   const openBulkPersonBtn = app.querySelector('[data-action="openBulkPersonModal"]');
   if(openBulkPersonBtn) openBulkPersonBtn.addEventListener('click', ()=>{
     state.bulkPersonModal = true;
-    state.bulkRows = [0,1,2].map(()=>({name:'', role:'intern', title:'', username:'', password:''}));
+    state.bulkRows = [0,1,2].map(()=>({name:'', role:'intern', title:'', username:'', password:'', email:''}));
     state.bulkResult = null;
     render();
   });
   const bulkAddRowBtn = app.querySelector('[data-action="bulkAddRow"]');
   if(bulkAddRowBtn) bulkAddRowBtn.addEventListener('click', ()=>{
-    state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:''});
+    state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:''});
     render();
   });
   app.querySelectorAll('[data-bulkremove]').forEach(b=>b.addEventListener('click', ()=>{
     const idx = Number(b.dataset.bulkremove);
     state.bulkRows.splice(idx,1);
-    if(!state.bulkRows.length) state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:''});
+    if(!state.bulkRows.length) state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:''});
     render();
   }));
   app.querySelectorAll('[data-bulkfield]').forEach(el=>{
@@ -2370,14 +2459,14 @@ function attachHandlers(){
         continue;
       }
       try{
-        await callFn('create-team-member', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password });
+        await callFn('create-team-member', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password, email:(r.email||'').trim() });
         successCount++;
       }catch(err){
         errors.push(`"${r.name.trim()}" (${r.username.trim()}): ${err.message||err}`);
         remaining.push(r);
       }
     }
-    state.bulkRows = remaining.length ? remaining : [{name:'', role:'intern', title:'', username:'', password:''}];
+    state.bulkRows = remaining.length ? remaining : [{name:'', role:'intern', title:'', username:'', password:'', email:''}];
     state.bulkResult = { successCount, errors };
     if(errors.length===0 && successCount>0){ state.bulkPersonModal=false; state.bulkResult=null; }
     if(btn) btn.disabled = false;
@@ -2392,6 +2481,7 @@ function attachHandlers(){
     closeCalDayModal: ()=>{ const cd=state.calDayModal; state.calDayModal=null; if(cd && cd.fromView) state.calDayViewModal={date:cd.date}; },
     closeCalDayViewModal: ()=>state.calDayViewModal=null,
     closePersonModal: ()=>state.personModal=false,
+    closeEditPersonModal: ()=>state.editPersonModal=null,
     closeResetPwModal: ()=>state.resetPwModal=null,
     closeBulkPersonModal: ()=>state.bulkPersonModal=false,
   };
@@ -2405,6 +2495,7 @@ function attachHandlers(){
     caldaymodal: ()=>{ const cd=state.calDayModal; state.calDayModal=null; if(cd && cd.fromView) state.calDayViewModal={date:cd.date}; },
     caldayviewmodal: ()=>state.calDayViewModal=null,
     personmodal: ()=>state.personModal=false,
+    editpersonmodal: ()=>state.editPersonModal=null,
     resetpwmodal: ()=>state.resetPwModal=null,
     bulkpersonmodal: ()=>state.bulkPersonModal=false,
   };
