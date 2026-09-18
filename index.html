@@ -1267,7 +1267,7 @@ function renderTasksPage(u){
               ${u.role!=='intern' ? `<td>${escapeHtml(a.name)}</td>` : ''}
               <td>${escapeHtml(b.name)}</td>
               <td class="num-cell">${overdue?'⚠ ':''}${fmtDate(t.deadline)}</td>
-              <td><span class="pill pill-${t.status}">${STATUS_META[t.status].label}</span></td>
+              <td><span class="pill pill-${t.status}">${STATUS_META[t.status]?.label||t.status}</span></td>
             </tr>`;
           }).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-faint);padding:26px 0;">${state.taskTab==='backlog'?'Không có task tồn đọng nào 🎉':'Chưa có task nào trong tuần này.'}</td></tr>`}
         </tbody>
@@ -1309,7 +1309,7 @@ function renderTaskModal(t,u){
   <div class="modal-bg" data-close="modal">
     <div class="modal" data-stop="1">
       <div class="modal-head">
-        <h2>${taskLabel(t)} · ${STATUS_META[t.status].label}</h2>
+        <h2>${taskLabel(t)} · ${STATUS_META[t.status]?.label||t.status}</h2>
         <button class="modal-close" data-action="closeModal">✕</button>
       </div>
       <div class="modal-body">
@@ -1870,7 +1870,7 @@ function renderReportsPage(u){
             <td>${escapeHtml(byId(t.assignee).name)}</td>
             <td class="num-cell">${fmtDate(t.deadline)}</td>
             <td class="num-cell" style="color:var(--danger);font-weight:700;">${overdueDays(t.deadline)}</td>
-            <td><span class="pill pill-${t.status}">${STATUS_META[t.status].label}</span></td>
+            <td><span class="pill pill-${t.status}">${STATUS_META[t.status]?.label||t.status}</span></td>
           </tr>`).join('') : `<tr><td colspan="6" style="color:var(--ink-faint);">Không có task nào trễ deadline 🎉</td></tr>`}
         </tbody>
       </table></div>
