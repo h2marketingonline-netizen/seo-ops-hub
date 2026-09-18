@@ -710,8 +710,8 @@ function weekRangeLabel(mondayIso){ return `${fmtDate(mondayIso)} – ${fmtDate(
 /* Fill this in with your own project's values (Supabase Dashboard → Project
    Settings → API). The anon key is NOT a secret — access control is
    enforced by Row Level Security policies + Auth, not by hiding this key. */
-const SUPABASE_URL = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcnp5ZGFhb3dmbHZmdmF4ZmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzNzE5MDksImV4cCI6MjEwNDk0NzkwOX0.vVJMhRMf7b4wzqHIzcWepd3k5eBUx6c0id3I8i5fLFY";
-const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
+const SUPABASE_URL = "https://dsrzydaaowflvfvaxfkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcnp5ZGFhb3dmbHZmdmF4ZmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzNzE5MDksImV4cCI6MjEwNDk0NzkwOX0.vVJMhRMf7b4wzqHIzcWepd3k5eBUx6c0id3I8i5fLFY";
 const LOGIN_EMAIL_DOMAIN = 'seoopshub.internal'; // must match supabase/functions/_shared/admin.ts
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
