@@ -741,7 +741,7 @@ async function callFn(name, payload){
    the subscription wiring differ between backends. */
 const FIELD_MAP = {
   tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
-  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email' },
+  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
   sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at', payload:'payload' },
@@ -1795,6 +1795,89 @@ function firstPassRateOf(list){
   const clean = submitted.filter(t=>t.status==='approved' && !(t.history||[]).some(h=>h.text.includes('yêu cầu sửa')));
   return Math.round((clean.length/submitted.length)*100);
 }
+function managerOptionsHtml(selectedId, excludeId){
+  const managers = USERS.filter(x=>(x.role==='manager'||x.role==='admin') && x.id!==excludeId).sort((a,b)=>a.name.localeCompare(b.name));
+  return `<option value="">— Không có / tự phụ trách —</option>` +
+    managers.map(m=>`<option value="${m.id}" ${selectedId===m.id?'selected':''}>${escapeHtml(m.name)}${m.role==='admin'?' (Quản trị)':''}</option>`).join('');
+}
+/* ---- Bảng 1: Performance nhân sự Fulltime (Admin/Quản lý) ----
+   "Số bài viết" = task họ tự được giao & thực hiện (giống mọi nhân sự khác).
+   "Số bài QC" / tỷ lệ QC = tính trên TOÀN BỘ task của các thực tập sinh có
+   manager_id = chính họ, LUÔN theo đúng khoảng ngày đang chọn (inRangeAll,
+   không phụ thuộc bộ lọc "xem riêng 1 người" ở trên) — vì task của thực tập
+   sinh khác task của người quản lý, filter theo assignee sẽ không thấy được
+   nếu chỉ dùng inRange đã bị lọc theo người đang xem. */
+function computeFulltimeRows(fulltimeStaff, allStaffFull, inRangeAll, perInternMap){
+  return fulltimeStaff.map(iu=>{
+    const own = perInternMap.get(iu.id) || {total:0, done:0, late:0};
+    const ownRate = own.total ? Math.round((own.done/own.total)*100) : 0;
+    const teamIds = allStaffFull.filter(s=>s.managerId===iu.id && s.id!==iu.id).map(s=>s.id);
+    const teamTasks = teamIds.length ? inRangeAll.filter(t=>teamIds.includes(t.assignee)) : [];
+    const qcTotal = teamTasks.length;
+    const qcDone = teamTasks.filter(t=>t.status==='approved').length;
+    const qcLate = teamTasks.filter(t=>isOverdue(t.deadline,t.status)).length;
+    const qcRate = qcTotal ? Math.round((qcDone/qcTotal)*100) : 0;
+    const lateTotal = own.late + qcLate;
+    const combinedTotal = own.total + qcTotal;
+    const lateRate = combinedTotal ? Math.round((lateTotal/combinedTotal)*100) : 0;
+    return {iu, ownTotal:own.total, ownRate, qcTotal, qcDone, qcRate, lateTotal, lateRate};
+  });
+}
+function renderFulltimeTable(rows){
+  return `
+    <div class="panel" style="margin-top:20px;">
+      <h3>Performance nhân sự Fulltime (kỳ này)</h3>
+      <div class="scrollx"><table class="data-table">
+        <thead>
+          <tr>
+            <th rowspan="2" style="vertical-align:bottom;">Nhân sự</th>
+            <th colspan="2" style="text-align:center;border-left:1px solid var(--border);">Bài viết cá nhân</th>
+            <th colspan="2" style="text-align:center;border-left:1px solid var(--border);">QC cho thực tập sinh</th>
+            <th rowspan="2" style="vertical-align:bottom;border-left:1px solid var(--border);">Trễ hạn</th>
+            <th rowspan="2" style="vertical-align:bottom;">Tỷ lệ trễ deadline</th>
+          </tr>
+          <tr>
+            <th style="border-left:1px solid var(--border);">Số bài viết</th><th>Tỷ lệ hoàn thành</th>
+            <th style="border-left:1px solid var(--border);">Số bài QC</th><th>Tỷ lệ hoàn thành</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.length ? rows.map(r=>`<tr>
+            <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(r.iu.name)}</span>${escapeHtml(r.iu.name)}</td>
+            <td class="num-cell" style="border-left:1px solid var(--border);">${r.ownTotal}</td>
+            <td class="num-cell">${r.ownRate}%</td>
+            <td class="num-cell" style="border-left:1px solid var(--border);color:var(--success);font-weight:700;">${r.qcDone}</td>
+            <td class="num-cell">${r.qcRate}%</td>
+            <td class="num-cell" style="border-left:1px solid var(--border);color:${r.lateTotal>0?'var(--danger)':'inherit'};font-weight:${r.lateTotal>0?'700':'400'};">${r.lateTotal}</td>
+            <td class="num-cell" style="color:${r.lateRate>0?'var(--danger)':'inherit'};font-weight:${r.lateRate>0?'700':'400'};">${r.lateRate}%</td>
+          </tr>`).join('') : `<tr><td colspan="7" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+function personReportRow(p){
+  return `<tr>
+    <td>${escapeHtml(p.iu.name)}</td>
+    <td class="num-cell">${p.total}</td>
+    <td class="num-cell" style="color:var(--success);font-weight:700;">${p.done}</td>
+    <td class="num-cell">${p.doing}</td>
+    <td class="num-cell" style="color:${p.late>0?'var(--danger)':'inherit'};font-weight:${p.late>0?'700':'400'};">${p.late}</td>
+    <td class="num-cell" style="color:${p.lateRate>0?'var(--danger)':'inherit'};font-weight:${p.lateRate>0?'700':'400'};">${p.lateRate}%</td>
+    <td class="num-cell">${p.rate}%</td>
+  </tr>`;
+}
+function renderInternTable(rows){
+  return `
+    <div class="panel" style="margin-top:20px;">
+      <h3>Performance thực tập sinh (kỳ này)</h3>
+      <div class="scrollx"><table class="data-table">
+        <thead><tr><th>Nhân sự</th><th>Tổng giao</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Trễ hạn</th><th>Tỷ lệ trễ deadline</th><th>Tỷ lệ duyệt lần đầu</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(personReportRow).join('') : `<tr><td colspan="7" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>`;
+}
 function renderReportsPage(u){
   // Ai cũng có thể tự tạo task giao cho chính mình (kể cả Admin/Manager), nên
   // bảng "Hiệu suất theo nhân sự" phải tính TOÀN BỘ nhân sự, không chỉ thực
@@ -1828,6 +1911,17 @@ function renderReportsPage(u){
     return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own), lateRate};
   });
   const maxDone = Math.max(1, ...perIntern.map(p=>p.done));
+  const perInternMap = new Map(perIntern.map(p=>[p.iu.id, p]));
+  // inRangeAll: task trong kỳ, KHÔNG lọc theo bộ lọc "xem riêng 1 người" ở
+  // trên — cần dùng cái này để tính số bài QC của 1 quản lý cho đội của họ,
+  // vì đội của họ là những assignee khác, filter theo scopedTasks sẽ mất.
+  const inRangeAll = TASKS.filter(t=>t.createdAt>=start && t.createdAt<=end);
+  // Không phát sinh task nào trong kỳ (không viết bài nào, và với Fulltime là
+  // cả không QC bài nào cho đội) thì không đưa vào báo cáo — bảng chỉ hiện
+  // những ai thật sự có việc trong kỳ đang xem.
+  const fulltimeRows = computeFulltimeRows(allStaff.filter(iu=>iu.role==='admin'||iu.role==='manager'), allStaffFull, inRangeAll, perInternMap)
+    .filter(r=>r.ownTotal>0 || r.qcTotal>0);
+  const internRows = perIntern.filter(p=>p.iu.role==='intern' && p.total>0);
 
   // Phân loại breakdown (cohort của kỳ đang chọn).
   const byType = TYPE_ORDER.map(ty=>({ty, count: inRange.filter(t=>t.type===ty).length}));
@@ -1928,23 +2022,8 @@ function renderReportsPage(u){
       </div>
     </div>
 
-    <div class="panel" style="margin-top:20px;">
-      <h3>Chi tiết theo nhân sự (kỳ này)</h3>
-      <div class="scrollx"><table class="data-table">
-        <thead><tr><th>Nhân sự</th><th>Tổng giao</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Trễ hạn</th><th>Tỷ lệ trễ deadline</th><th>Tỷ lệ đạt lần đầu</th></tr></thead>
-        <tbody>
-          ${perIntern.length? perIntern.map(p=>`<tr>
-            <td>${escapeHtml(p.iu.name)}</td>
-            <td class="num-cell">${p.total}</td>
-            <td class="num-cell" style="color:var(--success);font-weight:700;">${p.done}</td>
-            <td class="num-cell">${p.doing}</td>
-            <td class="num-cell" style="color:${p.late>0?'var(--danger)':'inherit'};font-weight:${p.late>0?'700':'400'};">${p.late}</td>
-            <td class="num-cell" style="color:${p.lateRate>0?'var(--danger)':'inherit'};font-weight:${p.lateRate>0?'700':'400'};">${p.lateRate}%</td>
-            <td class="num-cell">${p.rate}%</td>
-          </tr>`).join('') : `<tr><td colspan="7" style="color:var(--ink-faint);">Chưa có dữ liệu.</td></tr>`}
-        </tbody>
-      </table></div>
-    </div>
+    ${renderFulltimeTable(fulltimeRows)}
+    ${renderInternTable(internRows)}
 
     <div class="panel" style="margin-top:20px;">
       <h3>Task đang trễ deadline${overdueRows.length?` (${overdueRows.length})`:''}</h3>
@@ -1977,7 +2056,7 @@ function renderPeoplePage(u){
     </div>
     <div class="panel">
       <div class="scrollx"><table class="data-table">
-        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
+        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Quản lý phụ trách</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
         <tbody>
           ${USERS.map(p=>`<tr>
             <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(p.name)}</span>${escapeHtml(p.name)}</td>
@@ -1989,6 +2068,11 @@ function renderPeoplePage(u){
               </select>
             </td>
             <td>${escapeHtml(p.title||'')}</td>
+            <td>
+              <select data-managerchange="${p.id}" data-prevmanager="${p.managerId||''}" style="border:1px solid var(--border);border-radius:10px;padding:4px 8px;background:var(--surface);color:var(--ink);font-size:12.5px;min-width:150px;">
+                ${managerOptionsHtml(p.managerId||'', p.id)}
+              </select>
+            </td>
             <td class="num-cell">${escapeHtml(p.username)}</td>
             <td>${p.email ? escapeHtml(p.email) : `<span style="color:var(--danger);font-size:11.5px;">Chưa có</span>`}</td>
             <td class="num-cell">${p.joined||''}</td>
@@ -2000,7 +2084,7 @@ function renderPeoplePage(u){
           </tr>`).join('')}
         </tbody>
       </table></div>
-      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn. Cần nhập "Email nhận thông báo" (email thật) thì người đó mới nhận được mail khi được giao task / có bài chờ duyệt / được duyệt bài.</div>
+      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn. Cần nhập "Email nhận thông báo" (email thật) thì người đó mới nhận được mail khi được giao task / có bài chờ duyệt / được duyệt bài. "Quản lý phụ trách" dùng để nhóm số liệu ở trang Báo cáo theo từng quản lý — đổi cũng có hiệu lực ngay.</div>
     </div>
     ${state.resetPwModal ? renderResetPwModal() : ''}
     ${state.bulkPersonModal ? renderBulkPersonModal() : ''}
@@ -2024,6 +2108,11 @@ function renderEditPersonModal(){
             <label>Tài khoản đăng nhập</label>
             <input type="text" id="epUsername" required autocomplete="username" placeholder="vd: an.nguyen" value="${escapeHtml(m.username||'')}">
             <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Tên dùng để đăng nhập vào hệ thống. Đổi xong thì lần đăng nhập sau phải dùng tên mới (mật khẩu không đổi — muốn đổi mật khẩu, dùng nút "Đặt lại mật khẩu").</div>
+          </div>
+          <div class="field">
+            <label>Quản lý phụ trách</label>
+            <select id="epManager">${managerOptionsHtml(m.managerId||'', m.uid)}</select>
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Dùng để nhóm số liệu trong trang Báo cáo theo từng quản lý.</div>
           </div>
           <div class="field">
             <label>Email nhận thông báo</label>
@@ -2071,8 +2160,8 @@ function renderBulkPersonModal(){
       <form id="bulkPersonForm">
         <div class="modal-body">
           <div style="font-size:12px;color:var(--ink-muted);">Điền từng dòng 1 người. Dòng nào để trống hoàn toàn sẽ tự bỏ qua. Bấm "+ Thêm dòng" nếu cần nhiều hơn.</div>
-          <div class="scrollx"><table class="data-table" style="min-width:680px;">
-            <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản đăng nhập</th><th>Mật khẩu</th><th>Email nhận thông báo</th><th></th></tr></thead>
+          <div class="scrollx"><table class="data-table" style="min-width:820px;">
+            <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Tài khoản đăng nhập</th><th>Mật khẩu</th><th>Quản lý phụ trách</th><th>Email nhận thông báo</th><th></th></tr></thead>
             <tbody>
               ${rows.map((r,i)=>`<tr>
                 <td><input type="text" id="bulk_name_${i}" data-bulkfield="name" data-bulkidx="${i}" value="${escapeHtml(r.name)}" placeholder="Họ tên" style="min-width:120px;"></td>
@@ -2084,6 +2173,7 @@ function renderBulkPersonModal(){
                 <td><input type="text" id="bulk_title_${i}" data-bulkfield="title" data-bulkidx="${i}" value="${escapeHtml(r.title)}" placeholder="vd: TTS Content" style="min-width:120px;"></td>
                 <td><input type="text" id="bulk_username_${i}" data-bulkfield="username" data-bulkidx="${i}" value="${escapeHtml(r.username)}" placeholder="vd: an.nguyen" style="min-width:110px;"></td>
                 <td><input type="text" id="bulk_password_${i}" data-bulkfield="password" data-bulkidx="${i}" value="${escapeHtml(r.password)}" placeholder="Mật khẩu" style="min-width:100px;"></td>
+                <td><select id="bulk_manager_${i}" data-bulkfield="managerId" data-bulkidx="${i}" style="min-width:150px;">${managerOptionsHtml(r.managerId||'', null)}</select></td>
                 <td><input type="email" id="bulk_email_${i}" data-bulkfield="email" data-bulkidx="${i}" value="${escapeHtml(r.email||'')}" placeholder="an.nguyen@gmail.com" style="min-width:150px;"></td>
                 <td><button type="button" class="btn btn-ghost btn-sm" data-bulkremove="${i}" style="color:var(--danger);">✕</button></td>
               </tr>`).join('')}
@@ -2126,6 +2216,11 @@ function renderPersonModal(){
           <div class="form-grid">
             <div class="field"><label>Chức danh</label><input type="text" id="pTitle" placeholder="vd: Thực tập sinh Content"></div>
             <div class="field"><label>Tài khoản đăng nhập</label><input type="text" id="pUsername" required placeholder="vd: an.nguyen"></div>
+          </div>
+          <div class="field">
+            <label>Quản lý phụ trách</label>
+            <select id="pManager">${managerOptionsHtml('', null)}</select>
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Dùng để nhóm số liệu trong trang Báo cáo theo từng quản lý.</div>
           </div>
           <div class="field"><label>Mật khẩu</label><input type="text" id="pPassword" required placeholder="Đặt mật khẩu ban đầu"></div>
           <div class="field">
@@ -2435,6 +2530,13 @@ function attachHandlers(){
     catch(err){ alert('Không đổi được vai trò: ' + (err.message||err)); sel.value = prevRole; }
     sel.disabled = false;
   }));
+  app.querySelectorAll('[data-managerchange]').forEach(sel=>sel.addEventListener('change', async ()=>{
+    const uid = sel.dataset.managerchange, newManager = sel.value || null, prevManager = sel.dataset.prevmanager || '';
+    sel.disabled = true;
+    try{ await callFn('update-team-member', {uid, managerId:newManager}); }
+    catch(err){ alert('Không đổi được quản lý phụ trách: ' + (err.message||err)); sel.value = prevManager; }
+    sel.disabled = false;
+  }));
   app.querySelectorAll('[data-removeuser]').forEach(b=>b.addEventListener('click', ()=>{
     const person = byId(b.dataset.removeuser);
     state.confirmModal = {title:'Xoá nhân sự', message:`Xoá "${person.name}" khỏi hệ thống? Các task đã giao trước đó vẫn còn nhưng sẽ hiện "(đã xoá)".`, confirmLabel:'Xoá', onConfirm:'removeUser', payload:person.id};
@@ -2456,6 +2558,7 @@ function attachHandlers(){
         username: document.getElementById('pUsername').value.trim(),
         password: document.getElementById('pPassword').value,
         email: document.getElementById('pEmail').value.trim(),
+        managerId: document.getElementById('pManager').value || null,
       });
       state.personModal = false;
     }catch(err){
@@ -2467,7 +2570,7 @@ function attachHandlers(){
 
   app.querySelectorAll('[data-editperson]').forEach(b=>b.addEventListener('click', ()=>{
     const person = byId(b.dataset.editperson); if(!person) return;
-    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||'', username: person.username||''};
+    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||'', username: person.username||'', managerId: person.managerId||''};
     render();
   }));
   const editPersonForm = document.getElementById('editPersonForm');
@@ -2482,6 +2585,7 @@ function attachHandlers(){
         title: document.getElementById('epTitle').value.trim(),
         email: document.getElementById('epEmail').value.trim(),
         username: document.getElementById('epUsername').value.trim(),
+        managerId: document.getElementById('epManager').value || null,
       });
       state.editPersonModal = null;
     }catch(err){
@@ -2513,19 +2617,19 @@ function attachHandlers(){
   const openBulkPersonBtn = app.querySelector('[data-action="openBulkPersonModal"]');
   if(openBulkPersonBtn) openBulkPersonBtn.addEventListener('click', ()=>{
     state.bulkPersonModal = true;
-    state.bulkRows = [0,1,2].map(()=>({name:'', role:'intern', title:'', username:'', password:'', email:''}));
+    state.bulkRows = [0,1,2].map(()=>({name:'', role:'intern', title:'', username:'', password:'', email:'', managerId:''}));
     state.bulkResult = null;
     render();
   });
   const bulkAddRowBtn = app.querySelector('[data-action="bulkAddRow"]');
   if(bulkAddRowBtn) bulkAddRowBtn.addEventListener('click', ()=>{
-    state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:''});
+    state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:'', managerId:''});
     render();
   });
   app.querySelectorAll('[data-bulkremove]').forEach(b=>b.addEventListener('click', ()=>{
     const idx = Number(b.dataset.bulkremove);
     state.bulkRows.splice(idx,1);
-    if(!state.bulkRows.length) state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:''});
+    if(!state.bulkRows.length) state.bulkRows.push({name:'', role:'intern', title:'', username:'', password:'', email:'', managerId:''});
     render();
   }));
   app.querySelectorAll('[data-bulkfield]').forEach(el=>{
@@ -2554,14 +2658,14 @@ function attachHandlers(){
         continue;
       }
       try{
-        await callFn('create-team-member', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password, email:(r.email||'').trim() });
+        await callFn('create-team-member', { name:r.name.trim(), role:r.role, title:r.title.trim(), username:r.username.trim(), password:r.password, email:(r.email||'').trim(), managerId: r.managerId||null });
         successCount++;
       }catch(err){
         errors.push(`"${r.name.trim()}" (${r.username.trim()}): ${err.message||err}`);
         remaining.push(r);
       }
     }
-    state.bulkRows = remaining.length ? remaining : [{name:'', role:'intern', title:'', username:'', password:'', email:''}];
+    state.bulkRows = remaining.length ? remaining : [{name:'', role:'intern', title:'', username:'', password:'', email:'', managerId:''}];
     state.bulkResult = { successCount, errors };
     if(errors.length===0 && successCount>0){ state.bulkPersonModal=false; state.bulkResult=null; }
     if(btn) btn.disabled = false;
