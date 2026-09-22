@@ -625,6 +625,10 @@ let state = {
   bulkPersonModal:false,
   bulkRows:[],        // [{name, role, title, username, password, email}]
   bulkResult:null,    // {successCount, errors:[string]}
+  bulkTaskModal:false,
+  bulkTaskRows:[],      // [{keyword, type, assignee, deadline, desc, _rawName}]
+  bulkTaskPaste:'',     // nội dung ô dán nhanh
+  bulkTaskResult:null,  // {successCount, errors:[string]}
   notifOpen:false,
   reportsRange:'this_week', // 'this_week'|'last_week'|'this_month'|'last_month'|'custom'
   reportsCustomFrom:'', reportsCustomTo:'',
@@ -873,6 +877,10 @@ function resetUiState(){
   state.bulkPersonModal = false;
   state.bulkRows = [];
   state.bulkResult = null;
+  state.bulkTaskModal = false;
+  state.bulkTaskRows = [];
+  state.bulkTaskPaste = '';
+  state.bulkTaskResult = null;
   state.notifOpen = false;
   state.reportsRange = 'this_week';
   state.reportsCustomFrom = ''; state.reportsCustomTo = '';
@@ -1146,6 +1154,7 @@ function renderShell(){
   </div>
   ${state.openTaskId ? renderTaskModal(getTaskById(state.openTaskId), u) : ''}
   ${state.showTaskForm ? renderTaskFormModal(u) : ''}
+  ${state.bulkTaskModal ? renderBulkTaskModal(u) : ''}
   ${state.editTaskModal ? renderEditTaskModal() : ''}
   ${state.submitModal ? renderSubmitModal() : ''}
   ${state.fixModal ? renderFixModal() : ''}
@@ -1220,7 +1229,10 @@ function renderTasksPage(u){
 
     <div class="section-title">
       <div></div>
-      <button class="btn btn-primary" data-action="openTaskForm">+ Tạo Task</button>
+      <div style="display:flex;gap:8px;">
+        ${isManagerOrAdmin(u) ? `<button class="btn btn-ghost" data-action="openBulkTaskModal">Tạo hàng loạt</button>` : ''}
+        <button class="btn btn-primary" data-action="openTaskForm">+ Tạo Task</button>
+      </div>
     </div>
 
     <div class="tabbar">
@@ -1438,6 +1450,62 @@ function renderTaskFormModal(u){
           <button type="submit" class="btn btn-primary">Giao việc</button>
         </div>
       </form>
+    </div>
+  </div>`;
+}
+
+/* ---- Bulk task create modal ---- */
+function renderBulkTaskModal(u){
+  const interns = USERS.filter(x=>x.role==='intern');
+  const isManager = isManagerOrAdmin(u);
+  const assigneeOptions = [
+    {id:u.id, name:`${u.name} (chính bạn)`},
+    ...(isManager ? interns.filter(i=>i.id!==u.id) : []),
+  ];
+  const rows = state.bulkTaskRows;
+  const result = state.bulkTaskResult;
+  return `
+  <div class="modal-bg" data-close="bulktaskmodal">
+    <div class="modal" data-stop="1" style="max-width:920px;">
+      <div class="modal-head"><h2>Tạo nhiều Task cùng lúc</h2><button class="modal-close" data-action="closeBulkTaskModal">✕</button></div>
+      <div class="modal-body">
+        <div style="font-size:12px;color:var(--ink-muted);">
+          Dán nhanh danh sách từ Excel/Google Sheets vào ô dưới đây — mỗi dòng 1 task, các cột cách nhau bằng dấu Tab (dán trực tiếp từ bảng tính) hoặc dấu <b>|</b>, theo đúng thứ tự:<br>
+          <b>Từ khoá &nbsp;|&nbsp; Loại bài (New/Audit/Khác) &nbsp;|&nbsp; Tên nhân sự &nbsp;|&nbsp; Deadline (dd/mm/yyyy) &nbsp;|&nbsp; Mô tả (không bắt buộc)</b>
+        </div>
+        <textarea id="bulkTaskPaste" placeholder="vd:&#10;Cách chọn gói cước phù hợp&#9;New&#9;Nguyễn Văn An&#9;30/09/2026&#9;Ưu tiên gói gia đình&#10;Review tốc độ mạng FPT&#9;Audit&#9;Trần Thị Bích&#9;02/10/2026" style="min-height:90px;font-family:monospace;font-size:12px;">${escapeHtml(state.bulkTaskPaste||'')}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin:6px 0 4px;">
+          <button type="button" class="btn btn-ghost btn-sm" data-action="parseBulkTaskPaste">Phân tích &amp; điền vào bảng ⬇</button>
+        </div>
+        <div class="scrollx"><table class="data-table" style="min-width:820px;">
+          <thead><tr><th style="min-width:200px;">Từ khoá</th><th>Loại bài</th><th style="min-width:170px;">Nhân sự thực hiện</th><th>Deadline</th><th style="min-width:180px;">Mô tả</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map((r,i)=>`<tr>
+              <td><input type="text" id="bt_keyword_${i}" data-btfield="keyword" data-btidx="${i}" value="${escapeHtml(r.keyword)}" placeholder="Từ khoá / chủ đề" style="min-width:190px;"></td>
+              <td><select id="bt_type_${i}" data-btfield="type" data-btidx="${i}">${TYPE_ORDER.map(t=>`<option value="${t}" ${r.type===t?'selected':''}>${TYPE_META[t].label}</option>`).join('')}</select></td>
+              <td>
+                <select id="bt_assignee_${i}" data-btfield="assignee" data-btidx="${i}" style="min-width:160px;">
+                  <option value="">— chọn —</option>
+                  ${assigneeOptions.map(o=>`<option value="${o.id}" ${r.assignee===o.id?'selected':''}>${escapeHtml(o.name)}</option>`).join('')}
+                </select>
+                ${(!r.assignee && r._rawName) ? `<div style="color:var(--danger);font-size:11px;">Không khớp tên "${escapeHtml(r._rawName)}" — chọn lại</div>` : ''}
+              </td>
+              <td><input type="date" id="bt_deadline_${i}" data-btfield="deadline" data-btidx="${i}" value="${r.deadline||''}" style="min-width:135px;"></td>
+              <td><input type="text" id="bt_desc_${i}" data-btfield="desc" data-btidx="${i}" value="${escapeHtml(r.desc||'')}" placeholder="(không bắt buộc)" style="min-width:170px;"></td>
+              <td><button type="button" class="btn btn-ghost btn-sm" data-bulktaskremove="${i}" style="color:var(--danger);">✕</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="bulkTaskAddRow">+ Thêm dòng</button>
+        ${result ? `<div style="font-size:12.5px;">
+          ${result.successCount>0?`<div style="color:var(--success);font-weight:700;">Đã tạo thành công ${result.successCount} task.</div>`:''}
+          ${result.errors.length?`<div style="color:var(--danger);margin-top:4px;">${result.errors.map(e=>`• ${escapeHtml(e)}`).join('<br>')}</div>`:''}
+        </div>` : ''}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-action="closeBulkTaskModal">Đóng</button>
+        <button type="button" class="btn btn-primary" data-action="submitBulkTask">Tạo tất cả</button>
+      </div>
     </div>
   </div>`;
 }
@@ -2494,6 +2562,119 @@ function attachHandlers(){
     render();
   });
 
+  const emptyBulkTaskRow = ()=>({keyword:'', type:'New', assignee:'', deadline: defaultDeadline(), desc:'', _rawName:''});
+  const openBulkTaskBtn = app.querySelector('[data-action="openBulkTaskModal"]');
+  if(openBulkTaskBtn) openBulkTaskBtn.addEventListener('click', ()=>{
+    state.bulkTaskModal = true;
+    state.bulkTaskRows = [0,1,2].map(emptyBulkTaskRow);
+    state.bulkTaskPaste = '';
+    state.bulkTaskResult = null;
+    render();
+  });
+  const bulkTaskAddRowBtn = app.querySelector('[data-action="bulkTaskAddRow"]');
+  if(bulkTaskAddRowBtn) bulkTaskAddRowBtn.addEventListener('click', ()=>{
+    state.bulkTaskRows.push(emptyBulkTaskRow());
+    render();
+  });
+  app.querySelectorAll('[data-bulktaskremove]').forEach(b=>b.addEventListener('click', ()=>{
+    const idx = Number(b.dataset.bulktaskremove);
+    state.bulkTaskRows.splice(idx,1);
+    if(!state.bulkTaskRows.length) state.bulkTaskRows.push(emptyBulkTaskRow());
+    render();
+  }));
+  app.querySelectorAll('[data-btfield]').forEach(el=>{
+    const evt = el.tagName==='SELECT' ? 'change' : 'input';
+    el.addEventListener(evt, ()=>{
+      const idx = Number(el.dataset.btidx), field = el.dataset.btfield;
+      if(state.bulkTaskRows[idx]){
+        state.bulkTaskRows[idx][field] = el.value;
+        if(field==='assignee') state.bulkTaskRows[idx]._rawName = '';
+      }
+      render();
+      if(evt==='input') restoreFocus(el.id);
+    });
+  });
+  const bulkTaskPasteEl = document.getElementById('bulkTaskPaste');
+  if(bulkTaskPasteEl) bulkTaskPasteEl.addEventListener('input', ()=>{ state.bulkTaskPaste = bulkTaskPasteEl.value; });
+  const parseBulkTaskBtn = app.querySelector('[data-action="parseBulkTaskPaste"]');
+  if(parseBulkTaskBtn) parseBulkTaskBtn.addEventListener('click', ()=>{
+    const raw = (document.getElementById('bulkTaskPaste')?.value || '').trim();
+    if(!raw) return;
+    const allPeople = USERS.slice();
+    const findPerson = (name)=>{
+      const n = (name||'').trim().toLowerCase();
+      if(!n) return null;
+      return allPeople.find(p=>p.name.trim().toLowerCase()===n) || null;
+    };
+    const findType = (label)=>{
+      const l = (label||'').trim().toLowerCase();
+      if(!l) return 'New';
+      const hit = TYPE_ORDER.find(t=>t.toLowerCase()===l || TYPE_META[t].label.toLowerCase()===l);
+      return hit || 'New';
+    };
+    const parseDeadline = (s)=>{
+      const v = (s||'').trim();
+      let m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // dd/mm/yyyy
+      if(m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+      m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // yyyy-mm-dd (đã đúng định dạng)
+      if(m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+      return '';
+    };
+    const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const parsed = lines.map(line=>{
+      const cols = (line.includes('\t') ? line.split('\t') : line.split('|')).map(c=>c.trim());
+      const [keyword='', typeRaw='', nameRaw='', deadlineRaw='', desc=''] = cols;
+      const person = findPerson(nameRaw);
+      return {
+        keyword,
+        type: findType(typeRaw),
+        assignee: person ? person.id : '',
+        _rawName: person ? '' : nameRaw,
+        deadline: parseDeadline(deadlineRaw) || defaultDeadline(),
+        desc,
+      };
+    });
+    state.bulkTaskRows = parsed.length ? parsed : state.bulkTaskRows;
+    render();
+  });
+  const submitBulkTaskBtn = app.querySelector('[data-action="submitBulkTask"]');
+  if(submitBulkTaskBtn) submitBulkTaskBtn.addEventListener('click', async ()=>{
+    submitBulkTaskBtn.disabled = true;
+    const remaining = [];
+    const errors = [];
+    let successCount = 0;
+    for(const r of state.bulkTaskRows){
+      const blank = !r.keyword.trim() && !r.assignee && !r._rawName;
+      if(blank) continue;
+      if(!r.keyword.trim() || !r.assignee || !r.deadline){
+        errors.push(`"${r.keyword.trim()||r._rawName||'(dòng thiếu thông tin)'}": cần đủ Từ khoá, Nhân sự thực hiện và Deadline.`);
+        remaining.push(r);
+        continue;
+      }
+      try{
+        await dbApi.collection('tasks').add({
+          keyword: r.keyword.trim(),
+          type: r.type || 'New',
+          assignee: r.assignee, assignedBy: state.authedUser.id,
+          deadline: r.deadline,
+          createdAt: todayISO(), status:'assigned', fileLink:'',
+          desc: r.desc.trim() || '(không có mô tả thêm)',
+          history:[{t:todayDMY(), text: r.assignee===state.authedUser.id ? 'Tự tạo task cho bản thân' : `Giao việc cho ${byId(r.assignee).name}`}],
+          comments:[],
+        });
+        successCount++;
+      }catch(err){
+        errors.push(`"${r.keyword.trim()}": ${err.message||err}`);
+        remaining.push(r);
+      }
+    }
+    state.bulkTaskRows = remaining.length ? remaining : [emptyBulkTaskRow()];
+    state.bulkTaskResult = { successCount, errors };
+    if(errors.length===0 && successCount>0){ state.bulkTaskModal=false; state.bulkTaskResult=null; state.bulkTaskPaste=''; }
+    submitBulkTaskBtn.disabled = false;
+    render();
+  });
+
   /* generic close handlers for the small modals */
   const closeActionMap = {
     closeSubmitModal: ()=>state.submitModal=null,
@@ -2505,6 +2686,7 @@ function attachHandlers(){
     closeEditPersonModal: ()=>state.editPersonModal=null,
     closeResetPwModal: ()=>state.resetPwModal=null,
     closeBulkPersonModal: ()=>state.bulkPersonModal=false,
+    closeBulkTaskModal: ()=>state.bulkTaskModal=false,
   };
   Object.keys(closeActionMap).forEach(name=>{
     app.querySelectorAll(`[data-action="${name}"]`).forEach(b=>b.addEventListener('click', ()=>{ closeActionMap[name](); render(); }));
@@ -2519,6 +2701,7 @@ function attachHandlers(){
     editpersonmodal: ()=>state.editPersonModal=null,
     resetpwmodal: ()=>state.resetPwModal=null,
     bulkpersonmodal: ()=>state.bulkPersonModal=false,
+    bulktaskmodal: ()=>state.bulkTaskModal=false,
   };
   Object.keys(closeBgMap).forEach(key=>{
     app.querySelectorAll(`[data-close="${key}"]`).forEach(bg=>bg.addEventListener('click', (e)=>{ if(e.target===bg){ closeBgMap[key](); render(); } }));
