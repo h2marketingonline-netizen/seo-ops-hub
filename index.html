@@ -1802,20 +1802,24 @@ function managerOptionsHtml(selectedId, excludeId){
 }
 /* ---- Bảng 1: Performance nhân sự Fulltime (Admin/Quản lý) ----
    "Số bài viết" = task họ tự được giao & thực hiện (giống mọi nhân sự khác).
-   "Số bài QC" / tỷ lệ QC = tính trên TOÀN BỘ task của các thực tập sinh có
-   manager_id = chính họ, LUÔN theo đúng khoảng ngày đang chọn (inRangeAll,
-   không phụ thuộc bộ lọc "xem riêng 1 người" ở trên) — vì task của thực tập
-   sinh khác task của người quản lý, filter theo assignee sẽ không thấy được
-   nếu chỉ dùng inRange đã bị lọc theo người đang xem. */
-function computeFulltimeRows(fulltimeStaff, allStaffFull, inRangeAll, perInternMap){
+   "Số bài QC" / tỷ lệ QC = tính trên các task mà CHÍNH HỌ là "Người giao việc"
+   (assigned_by) cho MỘT NGƯỜI KHÁC — đây là tín hiệu QC/duyệt trực tiếp trên
+   từng task (ai giao/phụ trách task đó thì người đó QC), không phụ thuộc
+   trường "Quản lý phụ trách" ở hồ sơ (trường đó có thể chưa được gán, hoặc
+   một task có thể do người khác giao ngoài quản lý cố định). Task tự giao
+   cho chính mình (assigned_by === assignee) không tính vào đây vì đã tính ở
+   "Bài viết cá nhân" rồi, tính thêm sẽ bị trùng.
+   Luôn tính theo inRangeAll (không phụ thuộc bộ lọc "xem riêng 1 người" ở
+   trên) — vì task của thực tập sinh khác task của người quản lý, dùng
+   inRange đã bị lọc theo người đang xem sẽ không thấy được. */
+function computeFulltimeRows(fulltimeStaff, inRangeAll, perInternMap){
   return fulltimeStaff.map(iu=>{
     const own = perInternMap.get(iu.id) || {total:0, done:0, late:0};
     const ownRate = own.total ? Math.round((own.done/own.total)*100) : 0;
-    const teamIds = allStaffFull.filter(s=>s.managerId===iu.id && s.id!==iu.id).map(s=>s.id);
-    const teamTasks = teamIds.length ? inRangeAll.filter(t=>teamIds.includes(t.assignee)) : [];
-    const qcTotal = teamTasks.length;
-    const qcDone = teamTasks.filter(t=>t.status==='approved').length;
-    const qcLate = teamTasks.filter(t=>isOverdue(t.deadline,t.status)).length;
+    const qcTasks = inRangeAll.filter(t=>t.assignedBy===iu.id && t.assignee!==iu.id);
+    const qcTotal = qcTasks.length;
+    const qcDone = qcTasks.filter(t=>t.status==='approved').length;
+    const qcLate = qcTasks.filter(t=>isOverdue(t.deadline,t.status)).length;
     const qcRate = qcTotal ? Math.round((qcDone/qcTotal)*100) : 0;
     const lateTotal = own.late + qcLate;
     const combinedTotal = own.total + qcTotal;
@@ -1913,13 +1917,14 @@ function renderReportsPage(u){
   const maxDone = Math.max(1, ...perIntern.map(p=>p.done));
   const perInternMap = new Map(perIntern.map(p=>[p.iu.id, p]));
   // inRangeAll: task trong kỳ, KHÔNG lọc theo bộ lọc "xem riêng 1 người" ở
-  // trên — cần dùng cái này để tính số bài QC của 1 quản lý cho đội của họ,
-  // vì đội của họ là những assignee khác, filter theo scopedTasks sẽ mất.
+  // trên — cần dùng cái này để tính số bài 1 Fulltime đã QC cho người khác
+  // (assigned_by = họ, assignee = người khác), vì "người khác" đó có thể
+  // không phải người đang được chọn xem, filter theo scopedTasks sẽ mất.
   const inRangeAll = TASKS.filter(t=>t.createdAt>=start && t.createdAt<=end);
   // Không phát sinh task nào trong kỳ (không viết bài nào, và với Fulltime là
   // cả không QC bài nào cho đội) thì không đưa vào báo cáo — bảng chỉ hiện
   // những ai thật sự có việc trong kỳ đang xem.
-  const fulltimeRows = computeFulltimeRows(allStaff.filter(iu=>iu.role==='admin'||iu.role==='manager'), allStaffFull, inRangeAll, perInternMap)
+  const fulltimeRows = computeFulltimeRows(allStaff.filter(iu=>iu.role==='admin'||iu.role==='manager'), inRangeAll, perInternMap)
     .filter(r=>r.ownTotal>0 || r.qcTotal>0);
   const internRows = perIntern.filter(p=>p.iu.role==='intern' && p.total>0);
 
