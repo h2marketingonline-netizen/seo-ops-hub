@@ -2021,6 +2021,11 @@ function renderEditPersonModal(){
             <div class="field"><label>Chức danh</label><input type="text" id="epTitle" placeholder="vd: Thực tập sinh Content" value="${escapeHtml(m.title||'')}"></div>
           </div>
           <div class="field">
+            <label>Tài khoản đăng nhập</label>
+            <input type="text" id="epUsername" required autocomplete="username" placeholder="vd: an.nguyen" value="${escapeHtml(m.username||'')}">
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Tên dùng để đăng nhập vào hệ thống. Đổi xong thì lần đăng nhập sau phải dùng tên mới (mật khẩu không đổi — muốn đổi mật khẩu, dùng nút "Đặt lại mật khẩu").</div>
+          </div>
+          <div class="field">
             <label>Email nhận thông báo</label>
             <input type="email" id="epEmail" placeholder="vd: an.nguyen@gmail.com" value="${escapeHtml(m.email||'')}">
             <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Đây là email THẬT để nhận thông báo — khác với tài khoản đăng nhập. Để trống thì người này sẽ không nhận được email thông báo.</div>
@@ -2462,7 +2467,7 @@ function attachHandlers(){
 
   app.querySelectorAll('[data-editperson]').forEach(b=>b.addEventListener('click', ()=>{
     const person = byId(b.dataset.editperson); if(!person) return;
-    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||''};
+    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||'', username: person.username||''};
     render();
   }));
   const editPersonForm = document.getElementById('editPersonForm');
@@ -2476,6 +2481,7 @@ function attachHandlers(){
         name: document.getElementById('epName').value.trim(),
         title: document.getElementById('epTitle').value.trim(),
         email: document.getElementById('epEmail').value.trim(),
+        username: document.getElementById('epUsername').value.trim(),
       });
       state.editPersonModal = null;
     }catch(err){
