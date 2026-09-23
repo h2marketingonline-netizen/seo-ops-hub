@@ -894,8 +894,16 @@ function initApp(){
     const newUid = (session && session.user) ? session.user.id : null;
     authReady = true;
     currentSession = session;
-    if(prevUid===newUid && event!=='INITIAL_SESSION' && event!=='SIGNED_IN'){
-      render(); // e.g. TOKEN_REFRESHED for the same user — nothing to redo
+    // Vẫn là CÙNG 1 người đang đăng nhập (prevUid === newUid) thì không có gì
+    // để reset cả — kể cả khi Supabase báo event là 'SIGNED_IN' (thư viện
+    // Supabase tự phát lại sự kiện này mỗi khi tab được focus lại sau khi
+    // chuyển qua tab khác, KHÔNG phải người dùng đăng nhập lại thật). Nếu
+    // trước đó coi 'SIGNED_IN' luôn là phiên mới thì mỗi lần đổi tab xong
+    // quay lại sẽ bị resetUiState() xoá sạch modal/bộ lọc/form đang gõ dở.
+    // Chỉ thật sự reset khi prevUid khác newUid (đổi tài khoản, hoặc lần tải
+    // trang đầu tiên khi prevUid còn là null).
+    if(prevUid===newUid && prevUid!==null){
+      render(); // TOKEN_REFRESHED / SIGNED_IN lặp lại cho cùng 1 người — không reset gì
       return;
     }
     resetUiState();
