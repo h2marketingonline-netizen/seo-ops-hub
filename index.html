@@ -621,6 +621,7 @@ let state = {
   calDayModal:null,   // {date}
   personModal:false,
   editPersonModal:null, // {uid, name, title, email}
+  myProfileModal:null, // {avatarUrl, avatarUploading} — ai đăng nhập cũng tự mở được, chỉ đổi ảnh của chính mình
   resetPwModal:null,  // {uid, name}
   bulkPersonModal:false,
   bulkRows:[],        // [{name, role, title, username, password, email}]
@@ -830,6 +831,15 @@ function stopDataSubscriptions(){
 }
 
 async function refreshUsers(){ const { data } = await sb.from('profiles').select('*'); USERS = (data||[]).map(r=>({ id:r.id, ...fromRow('users', r) })); }
+/* Đồng bộ lại thông tin người ĐANG đăng nhập (vd: ảnh đại diện) mỗi khi bảng
+   profiles đổi — kể cả khi chính họ tự đổi ảnh qua "Hồ sơ của tôi", không chỉ
+   khi Admin sửa ở trang Nhân sự. Không có bước này thì sidebar của chính họ
+   sẽ không tự cập nhật cho tới khi họ tải lại trang. */
+function syncAuthedUserFromUsers(){
+  if(!state.authedUser) return;
+  const fresh = USERS.find(u=>u.id===state.authedUser.id);
+  if(fresh) state.authedUser = {...state.authedUser, ...fresh};
+}
 async function refreshTasks(){ const { data } = await sb.from('tasks').select('*'); TASKS = (data||[]).map(r=>({ id:r.id, ...fromRow('tasks', r) })); }
 async function refreshSchedule(){ const { data } = await sb.from('schedule').select('*'); const next={}; (data||[]).forEach(r=>{ next[r.user_id] = r.days||{}; }); SCHEDULE = next; }
 async function refreshLeave(){ const { data } = await sb.from('leave_requests').select('*'); LEAVE_REQUESTS = (data||[]).map(r=>({ id:r.id, ...fromRow('leaveRequests', r) })); }
@@ -846,12 +856,12 @@ function subscribeTable(table, onChange){
 }
 
 function startDataSubscriptions(){
-  refreshUsers().then(render);
+  refreshUsers().then(syncAuthedUserFromUsers).then(render);
   refreshTasks().then(render);
   refreshSchedule().then(render);
   refreshLeave().then(render);
   refreshNotifications().then(render);
-  subscribeTable('profiles',       ()=>refreshUsers().then(render));
+  subscribeTable('profiles',       ()=>refreshUsers().then(syncAuthedUserFromUsers).then(render));
   subscribeTable('tasks',          ()=>refreshTasks().then(render));
   subscribeTable('schedule',       ()=>refreshSchedule().then(render));
   subscribeTable('leave_requests', ()=>refreshLeave().then(render));
@@ -883,6 +893,7 @@ function resetUiState(){
   state.confirmModal = null;
   state.calDayModal = null;
   state.personModal = false;
+  state.myProfileModal = null;
   state.resetPwModal = null;
   state.bulkPersonModal = false;
   state.bulkRows = [];
@@ -1150,6 +1161,7 @@ function renderShell(){
           ${avatarHtml(u, 32, 12.5)}
           <div><div class="who-name">${u.name}</div><div class="who-role">${u.title||roleLabel(u.role)}</div></div>
         </div>
+        <button class="logout-btn" data-action="openMyProfileModal">Đổi ảnh đại diện</button>
         <button class="logout-btn" data-action="logout">Đăng xuất</button>
       </div>
     </aside>
@@ -1180,6 +1192,7 @@ function renderShell(){
   ${state.calDayModal ? renderCalDayModal() : ''}
   ${state.calDayViewModal ? renderCalDayViewModal() : ''}
   ${state.personModal ? renderPersonModal() : ''}
+  ${state.myProfileModal ? renderMyProfileModal() : ''}
   `;
 }
 
@@ -2275,6 +2288,40 @@ function renderPersonModal(){
   </div>`;
 }
 
+/* ---- Hồ sơ của tôi: ai đăng nhập cũng mở được, chỉ tự đổi ảnh của chính mình ---- */
+function renderMyProfileModal(){
+  const m = state.myProfileModal; if(!m) return '';
+  const u = state.authedUser;
+  return `
+  <div class="modal-bg" data-close="myprofilemodal">
+    <div class="modal" data-stop="1" style="max-width:420px;">
+      <div class="modal-head"><h2>Hồ sơ của tôi</h2><button class="modal-close" data-action="closeMyProfileModal">✕</button></div>
+      <div class="modal-body">
+        <div class="field" style="display:flex;align-items:center;gap:14px;">
+          ${avatarHtml({avatarUrl:m.avatarUrl, name:u.name}, 56, 18)}
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(u.name)}</div>
+            <div style="font-size:11.5px;color:var(--ink-faint);margin-bottom:6px;">${u.title||roleLabel(u.role)}</div>
+            <label>Ảnh đại diện</label>
+            <input type="file" id="mpAvatarFile" accept="image/*" ${m.avatarUploading?'disabled':''} style="font-size:12px;">
+            <div style="font-size:11px;margin-top:4px;">
+              ${m.avatarUploading
+                ? `<span style="color:var(--ink-faint);">Đang tải ảnh lên...</span>`
+                : (m.avatarUrl
+                  ? `<button type="button" data-action="removeMpAvatar" class="btn btn-ghost btn-sm" style="padding:2px 8px;color:var(--danger);">Xoá ảnh hiện tại</button>`
+                  : `<span style="color:var(--ink-faint);">Chọn ảnh JPG/PNG, tối đa 3MB.</span>`)}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-action="closeMyProfileModal">Đóng</button>
+        <button type="button" class="btn btn-primary" data-action="saveMyProfile" ${m.avatarUploading?'disabled':''}>Lưu thay đổi</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 /* ============================= EVENT HANDLERS ============================= */
 function attachHandlers(){
   const app = document.getElementById('app');
@@ -2662,6 +2709,57 @@ function attachHandlers(){
     render();
   });
 
+  const openMyProfileBtn = app.querySelector('[data-action="openMyProfileModal"]');
+  if(openMyProfileBtn) openMyProfileBtn.addEventListener('click', ()=>{
+    state.myProfileModal = {avatarUrl: state.authedUser.avatarUrl||null, avatarUploading:false};
+    render();
+  });
+  const mpAvatarFile = document.getElementById('mpAvatarFile');
+  if(mpAvatarFile) mpAvatarFile.addEventListener('change', async ()=>{
+    const file = mpAvatarFile.files && mpAvatarFile.files[0];
+    if(!file || !state.myProfileModal) return;
+    if(!file.type.startsWith('image/')){ alert('Chỉ chọn được file ảnh (JPG, PNG...).'); mpAvatarFile.value=''; return; }
+    if(file.size > 3*1024*1024){ alert('Ảnh tối đa 3MB, ảnh này đang lớn hơn — chọn ảnh nhỏ hơn hoặc nén lại rồi thử lại.'); mpAvatarFile.value=''; return; }
+    const uid = state.authedUser.id;
+    state.myProfileModal.avatarUploading = true;
+    render();
+    try{
+      const ext = (file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+      // Tên file BẮT BUỘC bắt đầu bằng chính uid của mình — policy Storage chỉ
+      // cho phép tự tải ảnh lên nếu tên file khớp uid, để không ai tải được
+      // ảnh "đè" lên ảnh của người khác.
+      const path = `${uid}-${Date.now()}.${ext}`;
+      const { error: upErr } = await sb.storage.from('avatars').upload(path, file, {upsert:true, contentType:file.type});
+      if(upErr) throw upErr;
+      const { data: pub } = sb.storage.from('avatars').getPublicUrl(path);
+      if(state.myProfileModal) state.myProfileModal.avatarUrl = pub.publicUrl;
+    }catch(err){
+      alert('Không tải được ảnh lên: ' + (err.message||err));
+    }
+    if(state.myProfileModal) state.myProfileModal.avatarUploading = false;
+    render();
+  });
+  const removeMpAvatarBtn = app.querySelector('[data-action="removeMpAvatar"]');
+  if(removeMpAvatarBtn) removeMpAvatarBtn.addEventListener('click', ()=>{
+    if(state.myProfileModal) state.myProfileModal.avatarUrl = null;
+    render();
+  });
+  const saveMyProfileBtn = app.querySelector('[data-action="saveMyProfile"]');
+  if(saveMyProfileBtn) saveMyProfileBtn.addEventListener('click', async ()=>{
+    if(!state.myProfileModal) return;
+    saveMyProfileBtn.disabled = true;
+    try{
+      const avatarUrl = state.myProfileModal.avatarUrl || null;
+      await callFn('update-my-avatar', { avatarUrl });
+      state.authedUser.avatarUrl = avatarUrl; // cập nhật ngay, không đợi realtime
+      state.myProfileModal = null;
+    }catch(err){
+      alert('Không lưu được ảnh đại diện: ' + (err.message||err));
+    }
+    saveMyProfileBtn.disabled = false;
+    render();
+  });
+
   app.querySelectorAll('[data-resetpw]').forEach(b=>b.addEventListener('click', ()=>{
     state.resetPwModal = {uid: b.dataset.resetpw, name: b.dataset.personname};
     render();
@@ -2861,6 +2959,7 @@ function attachHandlers(){
     closeCalDayViewModal: ()=>state.calDayViewModal=null,
     closePersonModal: ()=>state.personModal=false,
     closeEditPersonModal: ()=>state.editPersonModal=null,
+    closeMyProfileModal: ()=>state.myProfileModal=null,
     closeResetPwModal: ()=>state.resetPwModal=null,
     closeBulkPersonModal: ()=>state.bulkPersonModal=false,
     closeBulkTaskModal: ()=>state.bulkTaskModal=false,
@@ -2876,6 +2975,7 @@ function attachHandlers(){
     caldayviewmodal: ()=>state.calDayViewModal=null,
     personmodal: ()=>state.personModal=false,
     editpersonmodal: ()=>state.editPersonModal=null,
+    myprofilemodal: ()=>state.myProfileModal=null,
     resetpwmodal: ()=>state.resetPwModal=null,
     bulkpersonmodal: ()=>state.bulkPersonModal=false,
     bulktaskmodal: ()=>state.bulkTaskModal=false,
