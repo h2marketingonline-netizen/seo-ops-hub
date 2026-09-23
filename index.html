@@ -645,6 +645,16 @@ function overdueDays(iso){ const a=new Date(iso), b=new Date(todayISO()); return
 function byId(id){ return USERS.find(u=>u.id===id) || {id, name:'(đã xoá)', role:'intern', title:''}; }
 function roleLabel(r){ return r==='admin'?'Quản trị':r==='manager'?'Quản lý':'Thực tập sinh'; }
 function initials(name){ const p=(name||'?').trim().split(' '); return (p[p.length-2]?.[0]||'')+(p[p.length-1]?.[0]||''); }
+/* Vẽ ảnh đại diện: có avatarUrl thì hiện ảnh (bo tròn, cắt vừa khung), không
+   thì hiện lại 2 chữ cái đầu như cũ. Dùng chung 1 hàm để chỗ nào cũng đồng bộ. */
+function avatarHtml(p, size, fontSize){
+  size = size || 32; fontSize = fontSize || 12.5;
+  const name = (p && p.name) || '';
+  if(p && p.avatarUrl){
+    return `<span class="avatar" style="width:${size}px;height:${size}px;padding:0;overflow:hidden;"><img src="${escapeHtml(p.avatarUrl)}" alt="${escapeHtml(name)}" style="width:100%;height:100%;object-fit:cover;display:block;"></span>`;
+  }
+  return `<span class="avatar" style="width:${size}px;height:${size}px;font-size:${fontSize}px;">${initials(name)}</span>`;
+}
 function fmtDate(iso){ const parts=(iso||'').split('-'); if(parts.length<3) return iso||''; const [y,m,d]=parts; return `${d}/${m}`; }
 function fmtDateFull(iso){ const parts=(iso||'').split('-'); if(parts.length<3) return iso||''; const [y,m,d]=parts; return `${d}/${m}/${y}`; }
 function fmtDateTime(iso){ try{ const d=new Date(iso); return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }catch(e){ return ''; } }
@@ -741,7 +751,7 @@ async function callFn(name, payload){
    the subscription wiring differ between backends. */
 const FIELD_MAP = {
   tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
-  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id' },
+  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id', avatarUrl:'avatar_url' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
   sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at', payload:'payload' },
@@ -1137,7 +1147,7 @@ function renderShell(){
       <div class="sidebar-spacer"></div>
       <div class="sidebar-card">
         <div class="who">
-          <div class="avatar">${initials(u.name)}</div>
+          ${avatarHtml(u, 32, 12.5)}
           <div><div class="who-name">${u.name}</div><div class="who-role">${u.title||roleLabel(u.role)}</div></div>
         </div>
         <button class="logout-btn" data-action="logout">Đăng xuất</button>
@@ -1855,7 +1865,7 @@ function renderFulltimeTable(rows){
         </thead>
         <tbody>
           ${rows.length ? rows.map(r=>`<tr>
-            <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(r.iu.name)}</span>${escapeHtml(r.iu.name)}</td>
+            <td style="display:flex;align-items:center;gap:9px;">${avatarHtml(r.iu, 26, 10.5)}${escapeHtml(r.iu.name)}</td>
             <td class="num-cell" style="border-left:1px solid var(--border);">${r.ownTotal}</td>
             <td class="num-cell">${r.ownRate}%</td>
             <td class="num-cell" style="border-left:1px solid var(--border);color:var(--success);font-weight:700;">${r.qcDone}</td>
@@ -2072,7 +2082,7 @@ function renderPeoplePage(u){
         <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Quản lý phụ trách</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
         <tbody>
           ${USERS.map(p=>`<tr>
-            <td style="display:flex;align-items:center;gap:9px;"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initials(p.name)}</span>${escapeHtml(p.name)}</td>
+            <td style="display:flex;align-items:center;gap:9px;">${avatarHtml(p, 26, 10.5)}${escapeHtml(p.name)}</td>
             <td>
               <select data-rolechange="${p.id}" data-prevrole="${p.role}" ${p.id===u.id?'disabled':''} style="border:1px solid var(--border);border-radius:10px;padding:4px 8px;background:var(--surface);color:var(--ink);font-size:12.5px;">
                 <option value="admin" ${p.role==='admin'?'selected':''}>Quản trị</option>
@@ -2113,6 +2123,20 @@ function renderEditPersonModal(){
       <div class="modal-head"><h2>Sửa thông tin nhân sự</h2><button class="modal-close" data-action="closeEditPersonModal">✕</button></div>
       <form id="editPersonForm">
         <div class="modal-body">
+          <div class="field" style="display:flex;align-items:center;gap:14px;">
+            ${avatarHtml(m, 56, 18)}
+            <div style="flex:1;">
+              <label>Ảnh đại diện</label>
+              <input type="file" id="epAvatarFile" accept="image/*" ${m.avatarUploading?'disabled':''} style="font-size:12px;">
+              <div style="font-size:11px;margin-top:4px;">
+                ${m.avatarUploading
+                  ? `<span style="color:var(--ink-faint);">Đang tải ảnh lên...</span>`
+                  : (m.avatarUrl
+                    ? `<button type="button" data-action="removeEpAvatar" class="btn btn-ghost btn-sm" style="padding:2px 8px;color:var(--danger);">Xoá ảnh hiện tại</button>`
+                    : `<span style="color:var(--ink-faint);">Chọn ảnh JPG/PNG, tối đa 3MB.</span>`)}
+              </div>
+            </div>
+          </div>
           <div class="form-grid">
             <div class="field"><label>Họ tên</label><input type="text" id="epName" required value="${escapeHtml(m.name)}"></div>
             <div class="field"><label>Chức danh</label><input type="text" id="epTitle" placeholder="vd: Thực tập sinh Content" value="${escapeHtml(m.title||'')}"></div>
@@ -2583,9 +2607,38 @@ function attachHandlers(){
 
   app.querySelectorAll('[data-editperson]').forEach(b=>b.addEventListener('click', ()=>{
     const person = byId(b.dataset.editperson); if(!person) return;
-    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||'', username: person.username||'', managerId: person.managerId||''};
+    state.editPersonModal = {uid: person.id, name: person.name, title: person.title||'', email: person.email||'', username: person.username||'', managerId: person.managerId||'', avatarUrl: person.avatarUrl||null, avatarUploading:false};
     render();
   }));
+  const epAvatarFile = document.getElementById('epAvatarFile');
+  if(epAvatarFile) epAvatarFile.addEventListener('change', async ()=>{
+    const file = epAvatarFile.files && epAvatarFile.files[0];
+    if(!file || !state.editPersonModal) return;
+    if(!file.type.startsWith('image/')){ alert('Chỉ chọn được file ảnh (JPG, PNG...).'); epAvatarFile.value=''; return; }
+    if(file.size > 3*1024*1024){ alert('Ảnh tối đa 3MB, ảnh này đang lớn hơn — chọn ảnh nhỏ hơn hoặc nén lại rồi thử lại.'); epAvatarFile.value=''; return; }
+    const uid = state.editPersonModal.uid;
+    state.editPersonModal.avatarUploading = true;
+    render();
+    try{
+      const ext = (file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+      const path = `${uid}-${Date.now()}.${ext}`;
+      const { error: upErr } = await sb.storage.from('avatars').upload(path, file, {upsert:true, contentType:file.type});
+      if(upErr) throw upErr;
+      const { data: pub } = sb.storage.from('avatars').getPublicUrl(path);
+      if(state.editPersonModal && state.editPersonModal.uid===uid){
+        state.editPersonModal.avatarUrl = pub.publicUrl;
+      }
+    }catch(err){
+      alert('Không tải được ảnh lên: ' + (err.message||err));
+    }
+    if(state.editPersonModal && state.editPersonModal.uid===uid) state.editPersonModal.avatarUploading = false;
+    render();
+  });
+  const removeEpAvatarBtn = app.querySelector('[data-action="removeEpAvatar"]');
+  if(removeEpAvatarBtn) removeEpAvatarBtn.addEventListener('click', ()=>{
+    if(state.editPersonModal) state.editPersonModal.avatarUrl = null;
+    render();
+  });
   const editPersonForm = document.getElementById('editPersonForm');
   if(editPersonForm) editPersonForm.addEventListener('submit', async e=>{
     e.preventDefault();
@@ -2599,6 +2652,7 @@ function attachHandlers(){
         email: document.getElementById('epEmail').value.trim(),
         username: document.getElementById('epUsername').value.trim(),
         managerId: document.getElementById('epManager').value || null,
+        avatarUrl: state.editPersonModal.avatarUrl || null,
       });
       state.editPersonModal = null;
     }catch(err){
