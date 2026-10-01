@@ -613,13 +613,14 @@ const STATUS_META = {
   in_progress:{label:'Đang thực hiện', short:'Đang làm'},
   review:{label:'Đợi duyệt', short:'Đợi duyệt'},
   fix:{label:'Cần sửa', short:'Cần sửa'},
+  fixed:{label:'Đã sửa', short:'Đã sửa'},
   approved:{label:'Đã duyệt', short:'Đã duyệt'},
 };
-const STATUS_ORDER = ['assigned','in_progress','review','fix','approved'];
-// Manager/Admin duyệt hoặc từ chối ngay từ trạng thái "Đợi duyệt" — không
-// còn "Cần sửa"/"Đã sửa" riêng, từ chối sẽ đưa task quay lại "Đang thực
-// hiện" để nhân sự sửa rồi nộp lại (cũng là in_progress → review).
-const PENDING_REVIEW_STATUSES = ['review'];
+const STATUS_ORDER = ['assigned','in_progress','review','fix','fixed','approved'];
+// Manager/Admin duyệt hoặc yêu cầu sửa từ CẢ "Đợi duyệt" (nộp lần đầu) lẫn
+// "Đã sửa" (nộp lại sau khi bị yêu cầu sửa) — 2 trạng thái này đều đang chờ
+// quản lý ra quyết định, nên cộng chung vào "chờ duyệt" ở các thống kê.
+const PENDING_REVIEW_STATUSES = ['review','fixed'];
 const TYPE_META = {
   New:   {label:'New',  cls:'new'},
   Audit: {label:'Audit',cls:'audit'},
@@ -1306,7 +1307,7 @@ function renderTasksPage(u){
   const backlogList = backlogTasks(u);
   const activeList = state.taskTab==='backlog' ? backlogList : weekList;
 
-  const inProgressCount = activeList.filter(t=>['in_progress','review','fix'].includes(t.status)).length;
+  const inProgressCount = activeList.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
   const reviewCount = activeList.filter(t=>PENDING_REVIEW_STATUSES.includes(t.status)).length;
   const overdueCount = activeList.filter(t=>isOverdue(t.deadline,t.status)).length;
 
@@ -2137,7 +2138,7 @@ function renderReportsPage(u){
     const own = inRange.filter(t=>t.assignee===iu.id);
     const done = own.filter(t=>t.status==='approved').length;
     const late = own.filter(t=>isOverdue(t.deadline,t.status)).length;
-    const doing = own.filter(t=>['in_progress','review','fix'].includes(t.status)).length;
+    const doing = own.filter(t=>['in_progress','review','fix','fixed'].includes(t.status)).length;
     const lateRate = own.length ? Math.round((late/own.length)*100) : 0;
     return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own), lateRate};
   });
@@ -2178,8 +2179,8 @@ function renderReportsPage(u){
 
   const watchItems = [];
   if(overdueAll.length>0) watchItems.push(`${overdueAll.length} task đang trễ deadline tính đến hôm nay, ưu tiên nhắc nhân sự phụ trách.`);
-  const pendingReviewCount = scopedTasks.filter(t=>t.status==='review').length;
-  if(pendingReviewCount>0) watchItems.push(`${pendingReviewCount} task đang ở trạng thái "Đợi duyệt", ưu tiên duyệt hoặc yêu cầu sửa sớm.`);
+  const pendingReviewCount = scopedTasks.filter(t=>PENDING_REVIEW_STATUSES.includes(t.status)).length;
+  if(pendingReviewCount>0) watchItems.push(`${pendingReviewCount} task đang chờ duyệt ("Đợi duyệt"/"Đã sửa"), ưu tiên duyệt hoặc yêu cầu sửa sớm.`);
   watchItems.push(`Tỷ lệ đạt duyệt lần đầu kỳ này ${firstPassRate}% — ${firstPassRate>=80?'đang tốt, duy trì brief rõ ràng.':'thấp hơn mục tiêu 80%, nên rà lại brief giao việc.'}`);
 
   return `
@@ -2660,17 +2661,28 @@ function attachHandlers(){
     const note = document.getElementById('submitNote').value.trim();
     const finalLink = link || t.fileLink || ''; // giữ link cũ nếu nộp lại mà bỏ trống ô link
     const isResubmit = sm.mode==='resubmit';
-    // Không còn trạng thái "Đã sửa" riêng — nộp lần đầu hay nộp lại sau khi
-    // bị yêu cầu sửa đều chuyển thẳng về "Đợi duyệt" (in_progress -> review).
-    const newStatus = 'review';
-    const histText = isResubmit ? 'Đã sửa và nộp lại, chuyển "Đợi duyệt"' : 'Nộp bài, chuyển "Đợi duyệt"';
+    // Nộp lần đầu (in_progress) -> "Đợi duyệt". Nộp lại sau khi bị yêu cầu
+    // sửa (fix) -> "Đã sửa" (trạng thái riêng, khác "Đợi duyệt" lần đầu, để
+    // quản lý biết đây là bài đã sửa cần soát lại, không phải bài mới).
+    const newStatus = isResubmit ? 'fixed' : 'review';
+    const histText = isResubmit ? `Đã sửa và nộp lại, chuyển "${STATUS_META.fixed.label}"` : `Nộp bài, chuyển "${STATUS_META.review.label}"`;
     const newHistory = [...(t.history||[]), {t:todayDMY(), text:histText}];
     const commentText = [note, finalLink ? `Link: ${finalLink}` : ''].filter(Boolean).join('\n') || 'Đã nộp bài (không kèm link/ghi chú).';
     const newComments = [...(t.comments||[]), {id:'c'+Date.now(), authorId:state.authedUser.id, authorName:state.authedUser.name, text:commentText, createdAt:nowISOTime()}];
-    await dbApi.collection('tasks').doc(t.id).update({ status:newStatus, fileLink:finalLink, history:newHistory, comments:newComments });
+    try{
+      await dbApi.collection('tasks').doc(t.id).update({ status:newStatus, fileLink:finalLink, history:newHistory, comments:newComments });
+    }catch(err){
+      // KHÔNG được để lỗi này âm thầm trôi qua — nếu không báo lỗi ra màn
+      // hình, người dùng sẽ tưởng đã nộp xong trong khi task và Sheet đều
+      // chưa hề được cập nhật (đây là nguyên nhân phổ biến nhất của lỗi
+      // "nộp bài xong mà không thấy lên Sheet").
+      alert('Nộp bài thất bại: ' + (err.message||err));
+      return;
+    }
     // Đồng bộ TOÀN BỘ thông tin task sang Google Sheet MỖI LẦN nộp để chờ
-    // duyệt — dù nộp lần đầu hay nộp lại sau khi bị yêu cầu sửa — không bao
-    // giờ được bỏ bước này (ghi vào đúng 1 dòng của task, xem enqueueSheetSync()).
+    // duyệt — dù nộp lần đầu hay nộp lại sau khi bị yêu cầu sửa, CÓ LINK hay
+    // KHÔNG CÓ LINK — không bao giờ được bỏ bước này (ghi vào đúng 1 dòng
+    // của task, xem enqueueSheetSync()).
     await enqueueSheetSync({...t, status:newStatus, fileLink:finalLink}, STATUS_META[newStatus].label, note);
     state.submitModal = null;
     render();
@@ -2686,7 +2698,12 @@ function attachHandlers(){
     // task mới bắt đầu làm. Giữ nguyên cụm "yêu cầu sửa" trong lịch sử vì báo
     // cáo (firstPassRateOf) đang dò chuỗi này để tính tỷ lệ đạt duyệt lần đầu.
     const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa, chuyển "Cần sửa"'}];
-    await dbApi.collection('tasks').doc(t.id).update({status:'fix', note, history:newHistory});
+    try{
+      await dbApi.collection('tasks').doc(t.id).update({status:'fix', note, history:newHistory});
+    }catch(err){
+      alert('Gửi yêu cầu sửa thất bại: ' + (err.message||err));
+      return;
+    }
     // Đồng bộ ngay sang Google Sheet để Sheet phản ánh đúng trạng thái "Cần
     // sửa" ngay lúc này, không phải đợi tới lúc nhân sự nộp lại mới cập nhật
     // (ghi đè đúng 1 dòng sẵn có của task, xem enqueueSheetSync()).
