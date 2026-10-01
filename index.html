@@ -612,9 +612,10 @@ const STATUS_META = {
   assigned:{label:'Giao việc', short:'Giao việc'},
   in_progress:{label:'Đang thực hiện', short:'Đang làm'},
   review:{label:'Đợi duyệt', short:'Đợi duyệt'},
+  fix:{label:'Cần sửa', short:'Cần sửa'},
   approved:{label:'Đã duyệt', short:'Đã duyệt'},
 };
-const STATUS_ORDER = ['assigned','in_progress','review','approved'];
+const STATUS_ORDER = ['assigned','in_progress','review','fix','approved'];
 // Manager/Admin duyệt hoặc từ chối ngay từ trạng thái "Đợi duyệt" — không
 // còn "Cần sửa"/"Đã sửa" riêng, từ chối sẽ đưa task quay lại "Đang thực
 // hiện" để nhân sự sửa rồi nộp lại (cũng là in_progress → review).
@@ -647,6 +648,7 @@ let state = {
   openTaskId:null,
   showTaskForm:false,
   editTaskModal:null,      // taskId being edited, or null
+  editingCommentId:null,   // id of the comment currently being edited inline, or null
   calDayViewModal:null,    // {date} — read-only "who's working this day" summary (managers)
   calMonth:new Date().getMonth(), calYear:new Date().getFullYear(),
   bannerDismissed:false,
@@ -761,6 +763,26 @@ function isoWeekId(iso){
 }
 function currentWeekMonday(){ return mondayOf(todayISO()); }
 function weekRangeLabel(mondayIso){ return `${fmtDate(mondayIso)} – ${fmtDate(addDaysISO(mondayIso,6))}`; }
+// Chuyển weekId ("2026-W40") ngược lại thành ngày Thứ 2 của tuần đó — dùng
+// để hiển thị lựa chọn "Chuyển tuần" trong form Sửa Task. Theo ISO-8601,
+// ngày 4/1 luôn nằm trong tuần 1 của năm đó, nên Thứ 2 tuần 1 = mondayOf(4/1).
+function mondayFromWeekId(weekId){
+  const [y, w] = String(weekId).split('-W');
+  const year = Number(y), week = Number(w);
+  if(!year || !week) return currentWeekMonday();
+  const mondayWeek1 = mondayOf(`${year}-01-04`);
+  return addDaysISO(mondayWeek1, (week-1)*7);
+}
+// Danh sách tuần quanh 1 mốc (mặc định: 4 tuần trước -> 16 tuần sau tuần
+// hiện tại) để đổ vào dropdown "Chuyển tuần".
+function weekOptionsAround(centerMonday, before, after){
+  const opts = [];
+  for(let i=-before;i<=after;i++){
+    const monday = addDaysISO(centerMonday, i*7);
+    opts.push({weekId: isoWeekId(monday), monday});
+  }
+  return opts;
+}
 
 /* ============================= SUPABASE SETUP ============================= */
 /* Fill this in with your own project's values (Supabase Dashboard → Project
@@ -1284,7 +1306,7 @@ function renderTasksPage(u){
   const backlogList = backlogTasks(u);
   const activeList = state.taskTab==='backlog' ? backlogList : weekList;
 
-  const inProgressCount = activeList.filter(t=>['in_progress','review'].includes(t.status)).length;
+  const inProgressCount = activeList.filter(t=>['in_progress','review','fix'].includes(t.status)).length;
   const reviewCount = activeList.filter(t=>PENDING_REVIEW_STATUSES.includes(t.status)).length;
   const overdueCount = activeList.filter(t=>isOverdue(t.deadline,t.status)).length;
 
@@ -1389,6 +1411,7 @@ function renderTaskModal(t,u){
   if(mine){
     if(t.status==='assigned') actions += `<button class="btn btn-primary" data-taskaction="start">Bắt đầu làm</button>`;
     if(t.status==='in_progress') actions += `<button class="btn btn-primary" data-taskaction="submit">Nộp bài — chuyển Đợi duyệt</button>`;
+    if(t.status==='fix') actions += `<button class="btn btn-primary" data-taskaction="resubmit">Đã sửa xong — Nộp lại</button>`;
   }
   if(canManage){
     if(PENDING_REVIEW_STATUSES.includes(t.status)){
@@ -1419,11 +1442,29 @@ function renderTaskModal(t,u){
         <div class="detail-row"><div class="k">Lịch sử</div><div class="v history">${(t.history||[]).map(h=>`<div class="history-item"><span class="t">${h.t}</span>${escapeHtml(h.text)}</div>`).join('')}</div></div>
         <div class="detail-row"><div class="k">Bình luận</div><div class="v">
           <div class="comment-list">
-            ${comments.length ? comments.map(c=>`
+            ${comments.length ? comments.map(c=>{
+              const isMine = c.authorId === u.id;
+              if(state.editingCommentId === c.id){
+                return `
+                <div class="comment-item" data-commentid="${c.id}">
+                  <div class="who">${escapeHtml(c.authorName)}<span class="when">${fmtDateTime(c.createdAt)}</span></div>
+                  <textarea id="editCommentText" style="width:100%;min-height:60px;">${escapeHtml(c.text)}</textarea>
+                  <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button type="button" class="btn btn-primary btn-sm" data-action="saveEditComment" data-taskid="${t.id}" data-commentid="${c.id}">Lưu</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-action="cancelEditComment">Huỷ</button>
+                  </div>
+                </div>`;
+              }
+              return `
               <div class="comment-item">
                 <div class="who">${escapeHtml(c.authorName)}<span class="when">${fmtDateTime(c.createdAt)}</span></div>
-                <div class="txt">${linkify(escapeHtml(c.text))}</div>
-              </div>`).join('') : '<div style="font-size:12px;color:var(--ink-faint)">Chưa có bình luận nào.</div>'}
+                <div class="txt">${linkify(escapeHtml(c.text))}${c.editedAt?' <span style="color:var(--ink-faint);font-size:11px;">(đã sửa)</span>':''}</div>
+                ${isMine ? `<div style="display:flex;gap:6px;margin-top:2px;">
+                  <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 10px;font-size:11.5px;" data-action="editComment" data-commentid="${c.id}">Sửa</button>
+                  <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 10px;font-size:11.5px;color:var(--danger);" data-action="askDeleteComment" data-taskid="${t.id}" data-commentid="${c.id}">Xoá</button>
+                </div>` : ''}
+              </div>`;
+            }).join('') : '<div style="font-size:12px;color:var(--ink-faint)">Chưa có bình luận nào.</div>'}
           </div>
           <div class="comment-form">
             <textarea id="newCommentText" placeholder="Viết bình luận, dán link Docs nếu cần..."></textarea>
@@ -1596,6 +1637,14 @@ function renderEditTaskModal(){
   // đổi người thực hiện.
   const currentAssignee = byId(t.assignee);
   const assigneeOptions = interns.some(i=>i.id===t.assignee) ? interns : [currentAssignee, ...interns];
+  // Danh sách tuần để chọn "Chuyển tuần" — quanh tuần hiện tại (4 tuần
+  // trước -> 16 tuần sau), luôn đảm bảo có mặt tuần hiện đang gán cho task
+  // (kể cả khi task thuộc 1 tuần đã quá xa trong backlog).
+  let weekOpts = weekOptionsAround(currentWeekMonday(), 4, 16);
+  if(!weekOpts.some(o=>o.weekId===t.weekId)){
+    weekOpts.push({weekId:t.weekId, monday:mondayFromWeekId(t.weekId)});
+    weekOpts.sort((a,b)=> a.monday < b.monday ? -1 : (a.monday > b.monday ? 1 : 0));
+  }
   return `
   <div class="modal-bg" data-close="edittaskmodal">
     <div class="modal" data-stop="1">
@@ -1606,6 +1655,10 @@ function renderEditTaskModal(){
           <div class="form-grid">
             <div class="field"><label>Phân loại bài</label><select id="etType">${TYPE_ORDER.map(ty=>`<option value="${ty}" ${t.type===ty?'selected':''}>${TYPE_META[ty].label}</option>`).join('')}</select></div>
             <div class="field"><label>Nhân sự thực hiện</label><select id="etAssignee">${assigneeOptions.map(i=>`<option value="${i.id}" ${t.assignee===i.id?'selected':''}>${escapeHtml(i.name)}</option>`).join('')}</select></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Trạng thái</label><select id="etStatus">${STATUS_ORDER.map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${STATUS_META[s].label}</option>`).join('')}</select></div>
+            <div class="field"><label>Tuần làm việc</label><select id="etWeekId">${weekOpts.map(o=>`<option value="${o.weekId}" ${o.weekId===t.weekId?'selected':''}>${o.weekId} (${weekRangeLabel(o.monday)})</option>`).join('')}</select></div>
           </div>
           <div class="field"><label>Deadline</label><input type="date" id="etDeadline" required value="${t.deadline}"></div>
           <div class="field"><label>Mô tả công việc</label><textarea id="etDesc">${escapeHtml(t.desc||'')}</textarea></div>
@@ -2084,7 +2137,7 @@ function renderReportsPage(u){
     const own = inRange.filter(t=>t.assignee===iu.id);
     const done = own.filter(t=>t.status==='approved').length;
     const late = own.filter(t=>isOverdue(t.deadline,t.status)).length;
-    const doing = own.filter(t=>['in_progress','review'].includes(t.status)).length;
+    const doing = own.filter(t=>['in_progress','review','fix'].includes(t.status)).length;
     const lateRate = own.length ? Math.round((late/own.length)*100) : 0;
     return {iu, total:own.length, done, late, doing, rate:firstPassRateOf(own), lateRate};
   });
@@ -2533,6 +2586,8 @@ function attachHandlers(){
       keyword: document.getElementById('etKeyword').value.trim(),
       type: document.getElementById('etType').value,
       assignee: newAssignee,
+      status: document.getElementById('etStatus').value,
+      weekId: document.getElementById('etWeekId').value,
       deadline: document.getElementById('etDeadline').value,
       desc: document.getElementById('etDesc').value,
     };
@@ -2540,6 +2595,8 @@ function attachHandlers(){
     if(patch.keyword !== t.keyword) changed.push('từ khoá');
     if(patch.type !== t.type) changed.push('phân loại');
     if(patch.assignee !== t.assignee) changed.push(`nhân sự (→ ${byId(newAssignee).name})`);
+    if(patch.status !== t.status) changed.push(`trạng thái (→ ${STATUS_META[patch.status]?.label||patch.status})`);
+    if(patch.weekId !== t.weekId) changed.push(`tuần làm việc (→ ${patch.weekId})`);
     if(patch.deadline !== t.deadline) changed.push('deadline');
     if(patch.desc !== (t.desc||'')) changed.push('mô tả');
     const newHistory = [...(t.history||[]), {t:todayDMY(), text: changed.length ? `Quản lý sửa task: ${changed.join(', ')}` : 'Quản lý cập nhật task (không đổi nội dung)'}];
@@ -2574,6 +2631,27 @@ function attachHandlers(){
     await dbApi.collection('tasks').doc(t.id).update({comments:newComments});
   }));
 
+  // Sửa / xoá bình luận — chỉ chính tác giả bình luận đó mới thấy nút này
+  // (kiểm tra c.authorId === u.id lúc render), áp dụng cho mọi vai trò.
+  app.querySelectorAll('[data-action="editComment"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.editingCommentId = b.dataset.commentid; render();
+  }));
+  app.querySelectorAll('[data-action="cancelEditComment"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.editingCommentId = null; render();
+  }));
+  app.querySelectorAll('[data-action="saveEditComment"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const ta = document.getElementById('editCommentText'); const text=(ta.value||'').trim(); if(!text) return;
+    const t = getTaskById(b.dataset.taskid); if(!t) return;
+    const commentId = b.dataset.commentid;
+    const newComments = (t.comments||[]).map(c => c.id===commentId ? {...c, text, editedAt:nowISOTime()} : c);
+    await dbApi.collection('tasks').doc(t.id).update({comments:newComments});
+    state.editingCommentId = null; render();
+  }));
+  app.querySelectorAll('[data-action="askDeleteComment"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.confirmModal = {title:'Xoá bình luận', message:'Xoá bình luận này? Hành động không thể hoàn tác.', confirmLabel:'Xoá bình luận', onConfirm:'deleteComment', payload:{taskId:b.dataset.taskid, commentId:b.dataset.commentid}};
+    render();
+  }));
+
   const submitLinkForm = document.getElementById('submitLinkForm');
   if(submitLinkForm) submitLinkForm.addEventListener('submit', async e=>{
     e.preventDefault();
@@ -2603,12 +2681,16 @@ function attachHandlers(){
     e.preventDefault();
     const fm = state.fixModal; const t = getTaskById(fm.taskId); if(!t) return;
     const note = document.getElementById('fixNote').value.trim();
-    // Không còn trạng thái "Cần sửa" riêng — quản lý yêu cầu sửa sẽ đưa task
-    // quay lại "Đang thực hiện" để nhân sự sửa rồi nộp lại (in_progress ->
-    // review), giữ nguyên cụm "yêu cầu sửa" trong lịch sử vì báo cáo
-    // (firstPassRateOf) đang dò chuỗi này để tính tỷ lệ đạt duyệt lần đầu.
-    const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa, chuyển về "Đang thực hiện"'}];
-    await dbApi.collection('tasks').doc(t.id).update({status:'in_progress', note, history:newHistory});
+    // Quản lý yêu cầu sửa: chuyển task sang trạng thái riêng "Cần sửa" (khác
+    // "Đang thực hiện") để nhân sự thấy rõ đây là bài bị trả lại, không phải
+    // task mới bắt đầu làm. Giữ nguyên cụm "yêu cầu sửa" trong lịch sử vì báo
+    // cáo (firstPassRateOf) đang dò chuỗi này để tính tỷ lệ đạt duyệt lần đầu.
+    const newHistory = [...(t.history||[]), {t:todayDMY(), text:'Quản lý yêu cầu sửa, chuyển "Cần sửa"'}];
+    await dbApi.collection('tasks').doc(t.id).update({status:'fix', note, history:newHistory});
+    // Đồng bộ ngay sang Google Sheet để Sheet phản ánh đúng trạng thái "Cần
+    // sửa" ngay lúc này, không phải đợi tới lúc nhân sự nộp lại mới cập nhật
+    // (ghi đè đúng 1 dòng sẵn có của task, xem enqueueSheetSync()).
+    await enqueueSheetSync({...t, status:'fix', note}, STATUS_META.fix.label, note);
     state.fixModal = null;
     render();
   });
@@ -2624,6 +2706,14 @@ function attachHandlers(){
       catch(err){ alert('Không xoá được: ' + (err.message||err)); }
     }
     if(cm.onConfirm==='deleteTask'){ await dbApi.collection('tasks').doc(cm.payload).delete(); state.openTaskId=null; }
+    if(cm.onConfirm==='deleteComment'){
+      const {taskId, commentId} = cm.payload;
+      const t = getTaskById(taskId);
+      if(t){
+        const newComments = (t.comments||[]).filter(c=>c.id!==commentId);
+        await dbApi.collection('tasks').doc(taskId).update({comments:newComments});
+      }
+    }
     if(cm.onConfirm==='deleteRegistration'){
       const {uid, date} = cm.payload;
       const daysObj = {...(SCHEDULE[uid]||{})};
