@@ -238,44 +238,16 @@
   .stat-card .value.success{ color:var(--success); }
   .stat-card .delta{ font-size:11.5px; color:var(--ink-faint); }
 
-  /* ---------- status pipeline (per-status breakdown strip) ---------- */
-  .stat-group-label{
-    font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
-    color:var(--ink-faint); margin:4px 2px 10px;
-  }
-  .status-pipeline{
-    display:grid; grid-template-columns:repeat(6,1fr); gap:0;
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-    box-shadow:var(--shadow-sm); overflow:hidden; margin-bottom:22px;
-  }
-  .status-stage{ position:relative; padding:16px 10px 14px; text-align:center; border-right:1px solid var(--border); }
-  .status-stage:last-child{ border-right:none; }
-  .status-stage .dot{ width:9px; height:9px; border-radius:50%; margin:0 auto 8px; }
-  .status-stage .value{ font-size:24px; font-weight:800; font-family:'Baloo 2',sans-serif; line-height:1; margin-bottom:4px; }
-  .status-stage .label{ font-size:11.5px; font-weight:600; color:var(--ink-muted); }
-  .status-stage .chevron{
-    position:absolute; right:-8px; top:50%; transform:translateY(-50%) rotate(45deg);
-    width:13px; height:13px; background:var(--surface); border-right:1px solid var(--border);
-    border-top:1px solid var(--border); z-index:2;
-  }
-  .status-stage.st-assigned{ background:var(--st-assigned-soft); }
-  .status-stage.st-assigned .dot{ background:var(--st-assigned); }
-  .status-stage.st-assigned .value{ color:var(--st-assigned); }
-  .status-stage.st-in_progress{ background:var(--st-progress-soft); }
-  .status-stage.st-in_progress .dot{ background:var(--st-progress); }
-  .status-stage.st-in_progress .value{ color:var(--st-progress); }
-  .status-stage.st-review{ background:var(--st-review-soft); }
-  .status-stage.st-review .dot{ background:var(--st-review); }
-  .status-stage.st-review .value{ color:var(--st-review); }
-  .status-stage.st-fix{ background:var(--st-fix-soft); }
-  .status-stage.st-fix .dot{ background:var(--st-fix); }
-  .status-stage.st-fix .value{ color:var(--st-fix); }
-  .status-stage.st-fixed{ background:var(--st-fixed-soft); }
-  .status-stage.st-fixed .dot{ background:var(--st-fixed); }
-  .status-stage.st-fixed .value{ color:var(--st-fixed); }
-  .status-stage.st-approved{ background:var(--st-approved-soft); }
-  .status-stage.st-approved .dot{ background:var(--st-approved); }
-  .status-stage.st-approved .value{ color:var(--st-approved); }
+  /* ---------- per-status cards, same box as overview cards (keeps the whole
+     row visually even — mixing a "big rectangle" style with a separate dense
+     strip style is what made the first version look lệch) ---------- */
+  .stat-row-pipeline{ grid-template-columns:repeat(8,1fr); }
+  .stat-card .value.st-assigned{ color:var(--st-assigned); }
+  .stat-card .value.st-progress{ color:var(--st-progress); }
+  .stat-card .value.st-review{ color:var(--st-review); }
+  .stat-card .value.st-fix{ color:var(--st-fix); }
+  .stat-card .value.st-fixed{ color:var(--st-fixed); }
+  .stat-card .value.st-approved{ color:var(--st-approved); }
 
   /* ---------- filter bar ---------- */
   .filter-bar{
@@ -635,18 +607,14 @@
     nav.mainnav{ flex-direction:row; flex-wrap:wrap; }
     .sidebar-card{ display:none; }
     .stat-row{ grid-template-columns:1fr 1fr; }
+    .stat-row-pipeline{ grid-template-columns:repeat(4,1fr); }
     .two-col{ grid-template-columns:1fr; }
     .form-grid{ grid-template-columns:1fr; }
     .page{ padding:18px 16px 50px; }
     .topbar{ padding:14px 16px; }
-    .status-pipeline{ grid-template-columns:repeat(3,1fr); }
-    .status-stage:nth-child(3) .chevron, .status-stage:nth-child(6) .chevron{ display:none; }
-    .status-stage:nth-child(-n+3){ border-bottom:1px solid var(--border); }
   }
   @media (max-width: 480px){
-    .status-pipeline{ grid-template-columns:repeat(2,1fr); }
-    .status-stage:nth-child(2n) .chevron{ display:none; }
-    .status-stage:nth-child(-n+4){ border-bottom:1px solid var(--border); }
+    .stat-row-pipeline{ grid-template-columns:repeat(2,1fr); }
   }
 </style>
 </head>
@@ -1364,20 +1332,16 @@ function renderTasksPage(u){
   const backlogPageList = backlogList.slice((backlogPage-1)*pageSize, backlogPage*pageSize);
   const shownList = state.taskTab==='backlog' ? backlogPageList : weekList;
 
+  const STATUS_COLOR_KEY = { assigned:'assigned', in_progress:'progress', review:'review', fix:'fix', fixed:'fixed', approved:'approved' };
+
   return `
-    <div class="stat-row">
+    <div class="stat-row stat-row-pipeline">
       <div class="stat-card"><div class="label">Tổng task${u.role==='intern'?' của bạn':''}</div><div class="value num">${activeList.length}</div></div>
       <div class="stat-card"><div class="label">Trễ deadline</div><div class="value ${overdueCount>0?'danger':''} num">${overdueCount}</div></div>
-    </div>
-
-    <div class="stat-group-label">Theo trạng thái</div>
-    <div class="status-pipeline">
-      ${STATUS_ORDER.map((s,i)=>`
-        <div class="status-stage st-${s}">
-          ${i<STATUS_ORDER.length-1?'<div class="chevron"></div>':''}
-          <div class="dot"></div>
-          <div class="value num">${statusCounts[s]}</div>
+      ${STATUS_ORDER.map(s=>`
+        <div class="stat-card">
           <div class="label">${STATUS_META[s].short||STATUS_META[s].label}</div>
+          <div class="value st-${STATUS_COLOR_KEY[s]} num">${statusCounts[s]}</div>
         </div>
       `).join('')}
     </div>
