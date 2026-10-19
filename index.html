@@ -1308,6 +1308,27 @@ function backlogTasks(u){
   return applyCommonFilters(TASKS.filter(t=>t.weekId!==thisWeekId && t.status!=='approved'), u)
     .sort((a,b)=>(a.deadline||'').localeCompare(b.deadline||''));
 }
+// Danh sách ID người là "Người thực hiện" (assignee) có hoạt động trong
+// THÁNG HIỆN TẠI — tức có ít nhất 1 task mà họ là người thực hiện, với ngày
+// tạo (createdAt) HOẶC deadline rơi vào tháng này. Dùng để ẩn bớt những
+// người không có task nào trong tháng khỏi dropdown lọc "Người thực hiện"
+// (ở cả trang Quản lý Task và trang Lịch làm việc), cho đỡ rối khi danh sách
+// nhân sự dài ra theo thời gian — KHÔNG ảnh hưởng tới danh sách task/lịch
+// đang hiển thị, chỉ ẩn bớt option trong dropdown.
+function activeAssigneeIdsThisMonth(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const start = isoOf(y, m, 1);
+  const end = isoOf(y, m, daysInMonth(y, m));
+  const ids = new Set();
+  TASKS.forEach(t=>{
+    if(!t.assignee) return;
+    const createdInMonth = t.createdAt && t.createdAt>=start && t.createdAt<=end;
+    const deadlineInMonth = t.deadline && t.deadline>=start && t.deadline<=end;
+    if(createdInMonth || deadlineInMonth) ids.add(t.assignee);
+  });
+  return ids;
+}
 function renderTasksPage(u){
   if(!state.taskWeekMonday) state.taskWeekMonday = currentWeekMonday();
   const managers = USERS.filter(x=>x.role==='manager'||x.role==='admin');
@@ -1317,6 +1338,12 @@ function renderTasksPage(u){
   // sự, không chỉ Manager/Admin hoặc chỉ thực tập sinh — nếu không, task tự
   // giao của Admin/Manager sẽ không lọc được theo tên.
   const allPeople = USERS.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  // Riêng dropdown "Người thực hiện": chỉ liệt kê người có task phát sinh
+  // hoặc còn deadline trong tháng này — ai không có hoạt động gì trong
+  // tháng thì ẩn khỏi dropdown (vẫn còn trong hệ thống, chỉ là không hiện ở
+  // đây để đỡ rối khi list nhân sự dài ra).
+  const activeAssigneeIds = activeAssigneeIdsThisMonth();
+  const assigneeFilterPeople = allPeople.filter(m=>activeAssigneeIds.has(m.id));
 
   const weekList = currentWeekTasks(u, state.taskWeekMonday);
   const backlogList = backlogTasks(u);
@@ -1378,7 +1405,7 @@ function renderTasksPage(u){
         <select id="fType"><option value="">Tất cả</option>${TYPE_ORDER.map(t=>`<option value="${t}" ${state.taskFilters.type===t?'selected':''}>${TYPE_META[t].label}</option>`).join('')}</select>
       </div>
       ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${allPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
-      ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${allPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
+      ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${assigneeFilterPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
       <div class="field"><label>Deadline từ ngày</label><input type="date" id="fDeadlineFrom" value="${state.taskFilters.deadlineFrom}"></div>
       <div class="field"><label>Deadline đến ngày</label><input type="date" id="fDeadlineTo" value="${state.taskFilters.deadlineTo}"></div>
       <button class="btn btn-ghost btn-sm" data-action="clearFilters">Xoá lọc</button>
@@ -1744,6 +1771,11 @@ function renderCalTable(u, interns){
   const isIntern = u.role==='intern';
   const people = isIntern ? interns.filter(iu=>iu.id===u.id) : (state.calTablePerson ? interns.filter(iu=>iu.id===state.calTablePerson) : interns);
   const todayIso = todayISO();
+  // Dropdown "Tất cả thực tập sinh": chỉ liệt kê người có task phát sinh
+  // hoặc còn deadline trong tháng này — không ảnh hưởng tới bảng lịch đang
+  // hiển thị (mặc định "Tất cả" vẫn hiện lịch của mọi người).
+  const activeAssigneeIds = activeAssigneeIdsThisMonth();
+  const dropdownInterns = interns.filter(iu=>activeAssigneeIds.has(iu.id));
   const dowLabel = ['CN','T2','T3','T4','T5','T6','T7'];
 
   const theadCells = dates.map(iso=>{
@@ -1793,7 +1825,7 @@ function renderCalTable(u, interns){
       </div>
       ${isIntern ? '' : `<select id="calTablePersonSelect" style="border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;background:var(--surface);color:var(--ink);">
         <option value="">Tất cả thực tập sinh</option>
-        ${interns.map(iu=>`<option value="${iu.id}" ${state.calTablePerson===iu.id?'selected':''}>${escapeHtml(iu.name)}</option>`).join('')}
+        ${dropdownInterns.map(iu=>`<option value="${iu.id}" ${state.calTablePerson===iu.id?'selected':''}>${escapeHtml(iu.name)}</option>`).join('')}
       </select>`}
     </div>
     <div class="scrollx">
@@ -1901,8 +1933,7 @@ function renderCalendarPage(u){
     ${banner}
     <div class="two-col">
       <div>
-        ${modeTabs}
-        ${state.calViewMode==='table' ? renderCalTable(u, interns) : gridView}
+        ${renderCalTable(u, interns)}
       </div>
       <div class="panel">
         <h3>${isIntern? 'Trạng thái đăng ký của bạn' : `Đăng ký gần đây${pendingRegs.length?` · ${pendingRegs.length} chờ duyệt`:''}`}</h3>
