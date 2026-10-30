@@ -2061,6 +2061,14 @@ function reportRangeDates(range){
   const toIso = d=>`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
   return { start:toIso(start), end:toIso(end), prevStart:toIso(prevStart), prevEnd:toIso(prevEnd) };
 }
+// Báo cáo tính 1 task "thuộc về" kỳ nào theo TUẦN ĐANG GÁN của task
+// (weekId — cái mà user tự tay "Chuyển tuần" được ở tab Quản lý Task),
+// KHÔNG phải theo ngày tạo task (createdAt). Nhờ vậy khi user dời 1 task
+// trễ từ tuần trước sang tuần này, báo cáo tuần/tháng cũng tự cập nhật
+// theo đúng tuần mới ngay, không còn kẹt ở ngày tạo ban đầu của task.
+function taskReportDate(t){
+  return t.weekId ? mondayFromWeekId(t.weekId) : t.createdAt;
+}
 function deltaHtml(cur, prev, unit){
   if(prev===0 && cur===0) return `<div class="delta">Không đổi so với kỳ trước</div>`;
   if(prev===0) return `<div class="delta up">▲ mới so với kỳ trước</div>`;
@@ -2173,8 +2181,8 @@ function renderReportsPage(u){
   const scopedTasks = state.reportsPerson ? TASKS.filter(t=>t.assignee===state.reportsPerson) : TASKS;
   const allStaff = state.reportsPerson ? allStaffFull.filter(p=>p.id===state.reportsPerson) : allStaffFull;
   const {start, end, prevStart, prevEnd} = reportRangeDates(state.reportsRange);
-  const inRange = scopedTasks.filter(t=>t.createdAt>=start && t.createdAt<=end);
-  const inPrevRange = scopedTasks.filter(t=>t.createdAt>=prevStart && t.createdAt<=prevEnd);
+  const inRange = scopedTasks.filter(t=>{ const d=taskReportDate(t); return d>=start && d<=end; });
+  const inPrevRange = scopedTasks.filter(t=>{ const d=taskReportDate(t); return d>=prevStart && d<=prevEnd; });
 
   const totalTasks = inRange.length, prevTotal = inPrevRange.length;
   const approved = inRange.filter(t=>t.status==='approved').length;
@@ -2200,7 +2208,7 @@ function renderReportsPage(u){
   // trên — cần dùng cái này để tính số bài 1 Fulltime đã QC cho người khác
   // (assigned_by = họ, assignee = người khác), vì "người khác" đó có thể
   // không phải người đang được chọn xem, filter theo scopedTasks sẽ mất.
-  const inRangeAll = TASKS.filter(t=>t.createdAt>=start && t.createdAt<=end);
+  const inRangeAll = TASKS.filter(t=>{ const d=taskReportDate(t); return d>=start && d<=end; });
   // Không phát sinh task nào trong kỳ (không viết bài nào, và với Fulltime là
   // cả không QC bài nào cho đội) thì không đưa vào báo cáo — bảng chỉ hiện
   // những ai thật sự có việc trong kỳ đang xem.
