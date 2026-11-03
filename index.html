@@ -555,7 +555,7 @@
   .range-sep{ color:var(--ink-faint); font-weight:700; }
   .date-wrap{ position:relative; }
   .date-wrap input.date-display{ cursor:pointer; background:var(--surface); }
-  .date-wrap input[type="date"]{ position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; margin:0; padding:0; border:none; }
+  .date-wrap input[type="date"]{ position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; pointer-events:none; margin:0; padding:0; border:none; }
 
   /* ---------- overdue table rows ---------- */
   table.data-table tr.row-overdue td{ background:var(--st-fix-soft); }
@@ -1354,6 +1354,20 @@ function activeTaskListFor(u){
     : currentWeekTasks(u, state.taskWeekMonday);
   return state.taskTab==='backlog' ? backlogTasks(u) : currentList;
 }
+// Ô ngày kiểu "date-wrap": input text hiển thị dd/mm/yyyy (readonly) phủ lên
+// trên 1 input[type=date] ẩn (giữ giá trị thật + bắn sự kiện change). Bấm
+// vào ô text sẽ gọi hàm này để chủ động mở lịch chọn ngày của input ẩn —
+// dùng showPicker() (Chrome/Edge hiện đại); trình duyệt cũ không hỗ trợ thì
+// fallback sang focus()/click() để vẫn có cách tương tác được với input ẩn.
+function openDatePicker(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(typeof el.showPicker === 'function'){
+    try{ el.showPicker(); return; }catch(e){}
+  }
+  el.focus();
+  if(typeof el.click === 'function') el.click();
+}
 // Xuất đúng danh sách task đang lọc (không phụ thuộc phân trang) ra file CSV
 // — mở được trực tiếp bằng Google Sheets / Excel. Có thêm BOM (﻿) ở đầu
 // để tiếng Việt có dấu không bị lỗi font khi mở file.
@@ -1491,7 +1505,7 @@ function renderTasksPage(u){
           <div class="field">
             <label>Từ ngày</label>
             <div class="date-wrap">
-              <input type="text" class="date-display" id="taskRangeFromDisplay" readonly value="${state.taskRangeFrom?fmtDateFull(state.taskRangeFrom):''}">
+              <input type="text" class="date-display" id="taskRangeFromDisplay" readonly value="${state.taskRangeFrom?fmtDateFull(state.taskRangeFrom):''}" onclick="openDatePicker('taskRangeFrom')">
               <input type="date" id="taskRangeFrom" value="${state.taskRangeFrom}">
             </div>
           </div>
@@ -1499,7 +1513,7 @@ function renderTasksPage(u){
           <div class="field">
             <label>Đến ngày</label>
             <div class="date-wrap">
-              <input type="text" class="date-display" id="taskRangeToDisplay" readonly value="${state.taskRangeTo?fmtDateFull(state.taskRangeTo):''}">
+              <input type="text" class="date-display" id="taskRangeToDisplay" readonly value="${state.taskRangeTo?fmtDateFull(state.taskRangeTo):''}" onclick="openDatePicker('taskRangeTo')">
               <input type="date" id="taskRangeTo" value="${state.taskRangeTo}">
             </div>
           </div>
