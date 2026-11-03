@@ -256,6 +256,8 @@
   }
   .filter-bar .field{ min-width:150px; flex:1 1 150px; }
   .filter-bar .field.grow-search{ flex:2 1 220px; }
+  .choice-btn.danger-active{ border-color:var(--st-fix); background:var(--st-fix-soft); color:var(--st-fix); }
+  .choice-btn.danger-active:hover{ border-color:var(--st-fix); }
 
   /* ---------- kanban ---------- */
   .board{ display:flex; gap:14px; align-items:flex-start; padding-bottom:8px; }
@@ -457,6 +459,10 @@
   table.data-table td{ padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
   table.data-table tbody tr:nth-child(even){ background:var(--surface-alt); }
   table.data-table .num-cell{ font-family:'Quicksand',sans-serif; font-variant-numeric:tabular-nums; }
+  .dl-cell{ display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+  .dl-cell.late{ color:var(--st-fix); font-weight:700; }
+  .file-link{ display:inline-flex; align-items:center; gap:5px; color:var(--accent-strong); font-weight:700; text-decoration:none; font-size:12.5px; }
+  .file-empty{ color:var(--ink-faint); font-size:12px; }
 
   /* ---------- bar chart ---------- */
   .chart-wrap{ display:flex; flex-direction:column; gap:10px; }
@@ -534,10 +540,22 @@
     border-radius:999px; background:var(--surface-alt); color:var(--ink-muted); font-size:10.5px; font-weight:700; }
   .tab-btn.active .tab-count{ background:var(--accent-soft); color:var(--accent-strong); }
 
-  /* ---------- week nav ---------- */
-  .weeknav{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  /* ---------- week nav / khoảng ngày (Quản lý Task) ---------- */
+  .weeknav{
+    display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; justify-content:space-between;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; box-shadow:var(--shadow-sm);
+  }
   .weeknav .lbl{ font-size:13px; font-weight:700; font-family:'Quicksand',sans-serif; }
   .weeknav .sub{ font-size:11.5px; color:var(--ink-faint); }
+  .scope-pane{ display:flex; align-items:center; gap:12px; }
+  .scope-pane .choice-btn{ display:inline-flex; align-items:center; gap:7px; flex:0 0 auto; white-space:nowrap; }
+  .scope-pane:last-child{ padding-left:14px; border-left:1px solid var(--border); }
+  .pane-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .pane-controls .field{ min-width:0; }
+  .range-sep{ color:var(--ink-faint); font-weight:700; }
+  .date-wrap{ position:relative; }
+  .date-wrap input.date-display{ cursor:pointer; background:var(--surface); }
+  .date-wrap input[type="date"]{ position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; margin:0; padding:0; border:none; }
 
   /* ---------- overdue table rows ---------- */
   table.data-table tr.row-overdue td{ background:var(--st-fix-soft); }
@@ -657,9 +675,12 @@ let dbApi = null;
 let state = {
   authedUser:null,
   page:'tasks',
-  taskFilters:{q:'', status:'', assignedBy:'', assignee:'', deadlineFrom:'', deadlineTo:'', type:''},
+  taskFilters:{q:'', status:'', assignedBy:'', assignee:'', overdueOnly:false, type:''},
   taskTab:'current',        // 'current' | 'backlog'
   taskWeekMonday:null,      // ISO date of the Monday being viewed on the "current week" tab (set on init)
+  taskScope:'week',         // 'week' | 'range' — trang Quản lý Task xem theo tuần hay theo khoảng ngày tự chọn
+  taskRangeFrom:null,       // set lazy giống taskWeekMonday, mặc định = đầu tháng hiện tại
+  taskRangeTo:null,         // set lazy, mặc định = cuối tháng hiện tại
   backlogPage:1,
   openTaskId:null,
   showTaskForm:false,
@@ -958,9 +979,12 @@ async function loadProfileFor(uid){
    isn't even shown a nav item for (e.g. stuck on "people" as an intern). */
 function resetUiState(){
   state.page = 'tasks';
-  state.taskFilters = {q:'', status:'', assignedBy:'', assignee:'', deadlineFrom:'', deadlineTo:'', type:''};
+  state.taskFilters = {q:'', status:'', assignedBy:'', assignee:'', overdueOnly:false, type:''};
   state.taskTab = 'current';
   state.taskWeekMonday = currentWeekMonday();
+  state.taskScope = 'week';
+  state.taskRangeFrom = null;
+  state.taskRangeTo = null;
   state.backlogPage = 1;
   state.openTaskId = null;
   state.showTaskForm = false;
@@ -1168,6 +1192,10 @@ function iconCalendar(){ return `<svg width="16" height="16" viewBox="0 0 24 24"
 function iconReports(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>`; }
 function iconPeople(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="18" cy="8.5" r="2.4"/><path d="M16.5 14.2c2.6.5 4.2 2.4 4.2 5.3"/></svg>`; }
 function iconBell(){ return `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`; }
+function iconDateRange(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 15h3"/></svg>`; }
+function iconWarningSmall(){ return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>`; }
+function iconLinkSmall(){ return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 5M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19"/></svg>`; }
+function iconDownload(){ return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>`; }
 
 /* ============================= NOTIFICATION BELL ============================= */
 function renderBell(){
@@ -1291,8 +1319,7 @@ function applyCommonFilters(list, u){
   if(f.type) list = list.filter(t=>t.type===f.type);
   if(f.assignedBy) list = list.filter(t=>t.assignedBy===f.assignedBy);
   if(f.assignee) list = list.filter(t=>t.assignee===f.assignee);
-  if(f.deadlineFrom) list = list.filter(t=>t.deadline>=f.deadlineFrom);
-  if(f.deadlineTo) list = list.filter(t=>t.deadline<=f.deadlineTo);
+  if(f.overdueOnly) list = list.filter(t=>isOverdue(t.deadline, t.status));
   return list;
 }
 // "Tuần hiện tại" (or whichever week is being browsed): tasks whose week_id
@@ -1307,6 +1334,55 @@ function backlogTasks(u){
   const thisWeekId = isoWeekId(currentWeekMonday());
   return applyCommonFilters(TASKS.filter(t=>t.weekId!==thisWeekId && t.status!=='approved'), u)
     .sort((a,b)=>(a.deadline||'').localeCompare(b.deadline||''));
+}
+// "Khoảng ngày bất kỳ" (chế độ mới trên trang Quản lý Task): task được tính
+// vào khoảng [from, to] theo NGÀY HIỆU LỰC hiện tại của nó — dùng chung
+// taskReportDate() với trang Báo cáo (Thứ 2 của tuần đang gán, tự cập nhật
+// khi user đổi tuần cho task) để số liệu 2 trang luôn khớp nhau.
+function rangeTasks(u, from, to){
+  return applyCommonFilters(TASKS.filter(t=>{
+    const d = taskReportDate(t);
+    return (!from || d>=from) && (!to || d<=to);
+  }), u).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+}
+// Danh sách task đang hiển thị trên trang Quản lý Task theo đúng tab + scope
+// hiện tại — dùng chung cho cả phần render bảng lẫn nút "Xuất dữ liệu" (để
+// xuất đúng những gì đang lọc, không lệch với bảng đang xem).
+function activeTaskListFor(u){
+  const currentList = state.taskScope==='range'
+    ? rangeTasks(u, state.taskRangeFrom, state.taskRangeTo)
+    : currentWeekTasks(u, state.taskWeekMonday);
+  return state.taskTab==='backlog' ? backlogTasks(u) : currentList;
+}
+// Xuất đúng danh sách task đang lọc (không phụ thuộc phân trang) ra file CSV
+// — mở được trực tiếp bằng Google Sheets / Excel. Có thêm BOM (﻿) ở đầu
+// để tiếng Việt có dấu không bị lỗi font khi mở file.
+function exportTasksCsv(list){
+  const header = ['Tuần','Từ khoá','Trạng thái','Phân loại','Nhân sự','Người giao','Deadline','File'];
+  const rows = list.map(t=>{
+    const a = byId(t.assignee), b = byId(t.assignedBy);
+    return [
+      t.weekId || '',
+      t.keyword || '',
+      STATUS_META[t.status]?.label || t.status || '',
+      TYPE_META[t.type]?.label || t.type || '',
+      a.name || '',
+      b.name || '',
+      t.deadline ? fmtDateFull(t.deadline) : '',
+      t.fileLink || ''
+    ];
+  });
+  const csvEscape = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
+  const csv = '﻿' + [header, ...rows].map(r=>r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `tasks_${todayISO()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 // Danh sách ID người là "Người thực hiện" (assignee) có hoạt động trong
 // THÁNG HIỆN TẠI — tức có ít nhất 1 task mà họ là người thực hiện, với ngày
@@ -1331,6 +1407,11 @@ function activeAssigneeIdsThisMonth(){
 }
 function renderTasksPage(u){
   if(!state.taskWeekMonday) state.taskWeekMonday = currentWeekMonday();
+  if(!state.taskRangeFrom || !state.taskRangeTo){
+    const d = new Date();
+    state.taskRangeFrom = isoOf(d.getFullYear(), d.getMonth(), 1);
+    state.taskRangeTo = isoOf(d.getFullYear(), d.getMonth(), daysInMonth(d.getFullYear(), d.getMonth()));
+  }
   const managers = USERS.filter(x=>x.role==='manager'||x.role==='admin');
   const interns = USERS.filter(x=>x.role==='intern');
   // Ai cũng có thể tự tạo task giao cho chính mình (kể cả Admin/Manager), nên
@@ -1346,8 +1427,10 @@ function renderTasksPage(u){
   const assigneeFilterPeople = allPeople.filter(m=>activeAssigneeIds.has(m.id));
 
   const weekList = currentWeekTasks(u, state.taskWeekMonday);
+  const rangeList = state.taskScope==='range' ? rangeTasks(u, state.taskRangeFrom, state.taskRangeTo) : [];
+  const currentList = state.taskScope==='range' ? rangeList : weekList;
   const backlogList = backlogTasks(u);
-  const activeList = state.taskTab==='backlog' ? backlogList : weekList;
+  const activeList = state.taskTab==='backlog' ? backlogList : currentList;
 
   const statusCounts = STATUS_ORDER.reduce((acc,s)=>{ acc[s]=0; return acc; },{});
   activeList.forEach(t=>{ if(statusCounts[t.status]!==undefined) statusCounts[t.status]++; });
@@ -1357,9 +1440,11 @@ function renderTasksPage(u){
   const totalPages = Math.max(1, Math.ceil(backlogList.length/pageSize));
   const backlogPage = Math.min(state.backlogPage, totalPages);
   const backlogPageList = backlogList.slice((backlogPage-1)*pageSize, backlogPage*pageSize);
-  const shownList = state.taskTab==='backlog' ? backlogPageList : weekList;
+  const shownList = state.taskTab==='backlog' ? backlogPageList : currentList;
 
   const STATUS_COLOR_KEY = { assigned:'assigned', in_progress:'progress', review:'review', fix:'fix', fixed:'fixed', approved:'approved' };
+  const currentTabLabel = state.taskScope==='range' ? 'Khoảng ngày đã chọn' : 'Tuần hiện tại';
+  const colCount = u.role!=='intern' ? 8 : 7;
 
   return `
     <div class="stat-row stat-row-pipeline">
@@ -1382,22 +1467,48 @@ function renderTasksPage(u){
     </div>
 
     <div class="tabbar">
-      <button class="tab-btn ${state.taskTab==='current'?'active':''}" data-tasktab="current">Tuần hiện tại<span class="tab-count">${weekList.length}</span></button>
+      <button class="tab-btn ${state.taskTab==='current'?'active':''}" data-tasktab="current">${currentTabLabel}<span class="tab-count">${currentList.length}</span></button>
       <button class="tab-btn ${state.taskTab==='backlog'?'active':''}" data-tasktab="backlog">Tồn đọng<span class="tab-count">${backlogList.length}</span></button>
     </div>
 
     ${state.taskTab==='current' ? `
     <div class="weeknav">
-      <button class="btn btn-ghost btn-sm" data-action="weekPrev">◀</button>
-      <div><div class="lbl">Tuần ${isoWeekId(state.taskWeekMonday).split('-W')[1]} · ${weekRangeLabel(state.taskWeekMonday)}</div>
-        <div class="sub">${state.taskWeekMonday===currentWeekMonday()?'Tuần hiện tại':'Đang xem tuần khác'}</div></div>
-      <button class="btn btn-ghost btn-sm" data-action="weekNext">▶</button>
-      ${state.taskWeekMonday!==currentWeekMonday() ? `<button class="btn btn-ghost btn-sm" data-action="weekToday">Về tuần này</button>` : ''}
-      <div class="field" style="margin-left:auto;min-width:170px;"><label>Đi tới ngày bất kỳ</label><input type="date" id="weekJump" value="${state.taskWeekMonday}"></div>
-    </div>` : `<div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">Task được giao ở các tuần trước, chưa "Đã duyệt" — không phụ thuộc tuần đang xem.</div>`}
+      <div class="scope-pane">
+        <button class="choice-btn ${state.taskScope==='week'?'active':''}" data-action="taskScopeWeek">${iconCalendar()}Xem theo tuần</button>
+        ${state.taskScope==='week' ? `
+        <div class="pane-controls">
+          <button class="btn btn-ghost btn-sm" data-action="weekPrev">◀</button>
+          <div><div class="lbl">Tuần ${isoWeekId(state.taskWeekMonday).split('-W')[1]} · ${weekRangeLabel(state.taskWeekMonday)}</div>
+            <div class="sub">${state.taskWeekMonday===currentWeekMonday()?'Tuần hiện tại':'Đang xem tuần khác'}</div></div>
+          <button class="btn btn-ghost btn-sm" data-action="weekNext">▶</button>
+          ${state.taskWeekMonday!==currentWeekMonday() ? `<button class="btn btn-ghost btn-sm" data-action="weekToday">Về tuần này</button>` : ''}
+        </div>` : ''}
+      </div>
+      <div class="scope-pane">
+        <button class="choice-btn ${state.taskScope==='range'?'active':''}" data-action="taskScopeRange">${iconDateRange()}Xem từ ngày - đến ngày</button>
+        ${state.taskScope==='range' ? `
+        <div class="pane-controls">
+          <div class="field">
+            <label>Từ ngày</label>
+            <div class="date-wrap">
+              <input type="text" class="date-display" id="taskRangeFromDisplay" readonly value="${state.taskRangeFrom?fmtDateFull(state.taskRangeFrom):''}">
+              <input type="date" id="taskRangeFrom" value="${state.taskRangeFrom}">
+            </div>
+          </div>
+          <span class="range-sep">–</span>
+          <div class="field">
+            <label>Đến ngày</label>
+            <div class="date-wrap">
+              <input type="text" class="date-display" id="taskRangeToDisplay" readonly value="${state.taskRangeTo?fmtDateFull(state.taskRangeTo):''}">
+              <input type="date" id="taskRangeTo" value="${state.taskRangeTo}">
+            </div>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>` : `<div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">Task được giao ở các tuần trước, chưa "Đã duyệt" — không phụ thuộc tuần/khoảng ngày đang xem.</div>`}
 
     <div class="filter-bar">
-      <div class="field grow-search"><label>Tìm theo từ khoá / mã task</label><input type="text" id="fQ" placeholder="vd: wifi, T-0104..." value="${escapeHtml(state.taskFilters.q)}"></div>
+      <div class="field grow-search"><label>Tìm theo từ khoá</label><input type="text" id="fQ" placeholder="vd: wifi, T-0104..." value="${escapeHtml(state.taskFilters.q)}"></div>
       <div class="field"><label>Trạng thái</label>
         <select id="fStatus"><option value="">Tất cả</option>${STATUS_ORDER.map(s=>`<option value="${s}" ${state.taskFilters.status===s?'selected':''}>${STATUS_META[s].label}</option>`).join('')}</select>
       </div>
@@ -1406,9 +1517,9 @@ function renderTasksPage(u){
       </div>
       ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${allPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
       ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${assigneeFilterPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
-      <div class="field"><label>Deadline từ ngày</label><input type="date" id="fDeadlineFrom" value="${state.taskFilters.deadlineFrom}"></div>
-      <div class="field"><label>Deadline đến ngày</label><input type="date" id="fDeadlineTo" value="${state.taskFilters.deadlineTo}"></div>
+      <button class="choice-btn ${state.taskFilters.overdueOnly?'danger-active':''}" data-action="toggleOverdueFilter">${iconWarningSmall()}Trễ deadline</button>
       <button class="btn btn-ghost btn-sm" data-action="clearFilters">Xoá lọc</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto;" data-action="exportTasks">${iconDownload()}Xuất dữ liệu</button>
     </div>
 
     ${interns.length===0 && u.role!=='intern' ? `<div class="banner info"><div><strong>Chưa có thực tập sinh nào.</strong> Vào mục "Quản lý nhân sự" để thêm người trước khi tạo task.</div></div>` : ''}
@@ -1416,25 +1527,25 @@ function renderTasksPage(u){
     <div class="panel">
       <div class="scrollx"><table class="data-table">
         <thead><tr>
-          <th>Task ID</th><th>Tuần</th><th>Từ khoá</th><th>Phân loại</th>
+          <th>Tuần</th><th>Từ khoá</th><th>Trạng thái</th><th>Phân loại</th>
           ${u.role!=='intern' ? '<th>Nhân sự</th>' : ''}
-          <th>Người giao</th><th>Deadline</th><th>Trạng thái</th>
+          <th>Người giao</th><th>Deadline</th><th>File</th>
         </tr></thead>
         <tbody>
           ${shownList.length ? shownList.map(t=>{
             const a = byId(t.assignee), b = byId(t.assignedBy);
             const overdue = isOverdue(t.deadline, t.status);
             return `<tr class="clickable-row ${overdue?'row-overdue':''}" data-opentask="${t.id}">
-              <td class="num-cell">${taskLabel(t)}</td>
               <td class="num-cell">${t.weekId||''}</td>
               <td>${escapeHtml(t.keyword)}</td>
+              <td><span class="pill pill-${t.status}">${STATUS_META[t.status]?.label||t.status}</span></td>
               <td><span class="tag ${TYPE_META[t.type]?.cls||''}">${TYPE_META[t.type]?.label||t.type}</span></td>
               ${u.role!=='intern' ? `<td>${escapeHtml(a.name)}</td>` : ''}
               <td>${escapeHtml(b.name)}</td>
-              <td class="num-cell">${overdue?'⚠ ':''}${fmtDate(t.deadline)}</td>
-              <td><span class="pill pill-${t.status}">${STATUS_META[t.status]?.label||t.status}</span></td>
+              <td class="num-cell"><span class="dl-cell ${overdue?'late':''}">${overdue?iconWarningSmall():''}${fmtDate(t.deadline)}</span></td>
+              <td>${t.fileLink ? `<a class="file-link" href="${escapeHtml(t.fileLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${iconLinkSmall()}Xem bài</a>` : `<span class="file-empty">Chưa nộp</span>`}</td>
             </tr>`;
-          }).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-faint);padding:26px 0;">${state.taskTab==='backlog'?'Không có task tồn đọng nào 🎉':'Chưa có task nào trong tuần này.'}</td></tr>`}
+          }).join('') : `<tr><td colspan="${colCount}" style="text-align:center;color:var(--ink-faint);padding:26px 0;">${state.taskTab==='backlog'?'Không có task tồn đọng nào 🎉':'Không có task nào khớp bộ lọc hiện tại.'}</td></tr>`}
         </tbody>
       </table></div>
       ${state.taskTab==='backlog' && totalPages>1 ? `
@@ -2800,16 +2911,27 @@ function attachHandlers(){
     state.confirmModal=null; render();
   }));
 
-  ['fQ','fStatus','fType','fAssignedBy','fAssignee','fDeadlineFrom','fDeadlineTo'].forEach(id=>{
+  ['fQ','fStatus','fType','fAssignedBy','fAssignee'].forEach(id=>{
     const el = document.getElementById(id); if(!el) return;
     const key = id.slice(1,2).toLowerCase()+id.slice(2);
     el.addEventListener('input', ()=>{ state.taskFilters[key]=el.value; render(); restoreFocus(id); });
     el.addEventListener('change', ()=>{ state.taskFilters[key]=el.value; render(); });
   });
+  const overdueFilterBtn = app.querySelector('[data-action="toggleOverdueFilter"]');
+  if(overdueFilterBtn) overdueFilterBtn.addEventListener('click', ()=>{ state.taskFilters.overdueOnly = !state.taskFilters.overdueOnly; render(); });
   const clearBtn = app.querySelector('[data-action="clearFilters"]');
-  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.taskFilters={q:'',status:'',type:'',assignedBy:'',assignee:'',deadlineFrom:'',deadlineTo:''}; render(); });
-  const weekJump = document.getElementById('weekJump');
-  if(weekJump) weekJump.addEventListener('change', ()=>{ if(weekJump.value){ state.taskWeekMonday = mondayOf(weekJump.value); render(); } });
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.taskFilters={q:'',status:'',type:'',assignedBy:'',assignee:'',overdueOnly:false}; render(); });
+  const exportBtn = app.querySelector('[data-action="exportTasks"]');
+  if(exportBtn) exportBtn.addEventListener('click', ()=>{ exportTasksCsv(activeTaskListFor(state.authedUser)); });
+
+  const taskScopeWeekBtn = app.querySelector('[data-action="taskScopeWeek"]');
+  if(taskScopeWeekBtn) taskScopeWeekBtn.addEventListener('click', ()=>{ state.taskScope='week'; render(); });
+  const taskScopeRangeBtn = app.querySelector('[data-action="taskScopeRange"]');
+  if(taskScopeRangeBtn) taskScopeRangeBtn.addEventListener('click', ()=>{ state.taskScope='range'; render(); });
+  const taskRangeFromEl = document.getElementById('taskRangeFrom');
+  if(taskRangeFromEl) taskRangeFromEl.addEventListener('change', ()=>{ state.taskRangeFrom = taskRangeFromEl.value; render(); });
+  const taskRangeToEl = document.getElementById('taskRangeTo');
+  if(taskRangeToEl) taskRangeToEl.addEventListener('change', ()=>{ state.taskRangeTo = taskRangeToEl.value; render(); });
 
   app.querySelectorAll('[data-tasktab]').forEach(b=>b.addEventListener('click', ()=>{ state.taskTab=b.dataset.tasktab; render(); }));
   app.querySelectorAll('[data-reportrange]').forEach(b=>b.addEventListener('click', ()=>{ state.reportsRange=b.dataset.reportrange; render(); }));
