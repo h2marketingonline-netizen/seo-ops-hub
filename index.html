@@ -851,7 +851,7 @@ async function callFn(name, payload){
    the subscription wiring differ between backends. */
 const FIELD_MAP = {
   tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
-  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id', avatarUrl:'avatar_url' },
+  users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id', avatarUrl:'avatar_url', active:'active' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
   sheetQueue:    { taskId:'task_id', taskLabel:'task_label', taskKeyword:'task_keyword', link:'link', employeeId:'employee_id', employeeName:'employee_name', submittedAt:'submitted_at', payload:'payload' },
@@ -922,6 +922,11 @@ let authReady = false;
 let profileReady = false;
 let currentSession = null;
 let realtimeChannels = [];
+// Thông báo "tài khoản đã ngừng hoạt động" hiển thị trên màn hình đăng nhập.
+// Để RIÊNG ngoài state (không phải state.loginError) vì resetUiState() —
+// chạy mỗi khi đổi phiên đăng nhập, kể cả lúc tự động đăng xuất người vừa bị
+// chặn — sẽ xoá sạch state.loginError; để ở đây thì thông báo không bị mất.
+let blockedLoginMessage = '';
 
 function stopDataSubscriptions(){
   realtimeChannels.forEach(ch=>{ try{ sb.removeChannel(ch); }catch(e){} });
@@ -938,6 +943,14 @@ function syncAuthedUserFromUsers(){
   if(!state.authedUser) return;
   const fresh = USERS.find(u=>u.id===state.authedUser.id);
   if(fresh) state.authedUser = {...state.authedUser, ...fresh};
+  // Bị Quản trị đặt "Ngừng hoạt động" ngay TRONG LÚC đang đăng nhập sẵn (vd
+  // đang mở app ở tab khác) — đăng xuất ngay lập tức, không đợi tới lần đăng
+  // nhập sau mới chặn.
+  if(state.authedUser && state.authedUser.active===false){
+    blockedLoginMessage = 'Tài khoản này đã ngừng hoạt động trong hệ thống. Liên hệ Quản trị nếu cần hỗ trợ.';
+    state.authedUser = null;
+    sb.auth.signOut();
+  }
 }
 async function refreshTasks(){ const { data } = await sb.from('tasks').select('*'); TASKS = (data||[]).map(r=>({ id:r.id, ...fromRow('tasks', r) })); }
 async function refreshSchedule(){ const { data } = await sb.from('schedule').select('*'); const next={}; (data||[]).forEach(r=>{ next[r.user_id] = r.days||{}; }); SCHEDULE = next; }
@@ -1038,6 +1051,14 @@ function initApp(){
     if(newUid){
       profileReady = false;
       await loadProfileFor(newUid);
+      // Tài khoản đã bị Quản trị đặt "Ngừng hoạt động" — vẫn đăng nhập được
+      // (chưa đụng tới mật khẩu/tài khoản Auth) nhưng KHÔNG cho vào hệ thống,
+      // đăng xuất ngay và báo rõ lý do trên màn hình đăng nhập.
+      if(state.authedUser && state.authedUser.active===false){
+        blockedLoginMessage = 'Tài khoản này đã ngừng hoạt động trong hệ thống. Liên hệ Quản trị nếu cần hỗ trợ.';
+        state.authedUser = null;
+        sb.auth.signOut();
+      }
       if(state.authedUser) startDataSubscriptions();
       render();
     } else {
@@ -1085,7 +1106,7 @@ function renderLogin(){
       <form class="login-form" id="loginForm">
         <div class="field"><label>Tài khoản</label><input type="text" id="loginUser" placeholder="vd: lan.nguyen" autocomplete="username" required></div>
         <div class="field"><label>Mật khẩu</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" required></div>
-        <div class="login-error">${state.loginError}</div>
+        <div class="login-error">${state.loginError || blockedLoginMessage}</div>
         <button type="submit" class="btn-login-fancy">Đăng nhập</button>
       </form>
     </div>
@@ -1713,7 +1734,7 @@ function renderConfirmModal(){
 
 /* ---- Task create form modal ---- */
 function renderTaskFormModal(u){
-  const interns = USERS.filter(x=>x.role==='intern');
+  const interns = USERS.filter(x=>x.role==='intern' && x.active!==false);
   // Ai cũng tự tạo task giao cho CHÍNH MÌNH được (kể cả thực tập sinh);
   // riêng Manager/Admin thì thêm được cả các thực tập sinh khác vào lựa chọn.
   const isManager = isManagerOrAdmin(u);
@@ -1746,7 +1767,7 @@ function renderTaskFormModal(u){
 
 /* ---- Bulk task create modal ---- */
 function renderBulkTaskModal(u){
-  const interns = USERS.filter(x=>x.role==='intern');
+  const interns = USERS.filter(x=>x.role==='intern' && x.active!==false);
   const isManager = isManagerOrAdmin(u);
   const assigneeOptions = [
     {id:u.id, name:`${u.name} (chính bạn)`},
@@ -1804,11 +1825,12 @@ function renderBulkTaskModal(u){
 function renderEditTaskModal(){
   const taskId = state.editTaskModal; if(!taskId) return '';
   const t = getTaskById(taskId); if(!t) return '';
-  const interns = USERS.filter(x=>x.role==='intern');
+  const interns = USERS.filter(x=>x.role==='intern' && x.active!==false);
   // Task giờ có thể tự tạo cho chính mình (kể cả Manager/Admin tự giao cho
   // bản thân) — nếu người đang thực hiện task không nằm trong danh sách
-  // thực tập sinh, vẫn phải đưa họ vào lựa chọn, không thì lưu sẽ vô tình
-  // đổi người thực hiện.
+  // thực tập sinh ĐANG HOẠT ĐỘNG (bị lọc theo role, hoặc đã ngừng hoạt
+  // động), vẫn phải đưa họ vào lựa chọn, không thì lưu sẽ vô tình đổi người
+  // thực hiện.
   const currentAssignee = byId(t.assignee);
   const assigneeOptions = interns.some(i=>i.id===t.assignee) ? interns : [currentAssignee, ...interns];
   // Danh sách tuần để chọn "Chuyển tuần" — quanh tuần hiện tại (4 tuần
@@ -1973,7 +1995,11 @@ function renderCalendarPage(u){
   const y = state.calYear, m = state.calMonth;
   const total = daysInMonth(y,m);
   const firstDow = dowMonFirst(y,m,1);
-  const interns = USERS.filter(x=>x.role==='intern');
+  // Lịch làm việc (cả 📅 Lịch lẫn ▦ Bảng dùng chung interns truyền xuống từ
+  // đây) chỉ hiện nhân sự ĐANG HOẠT ĐỘNG — người đã bị đặt "Ngừng hoạt
+  // động" biến mất khỏi lịch nhưng task/báo cáo cũ của họ không bị ảnh
+  // hưởng gì (Báo cáo công việc KHÔNG lọc theo active, cố tình để vậy).
+  const interns = USERS.filter(x=>x.role==='intern' && x.active!==false);
   const isIntern = u.role==='intern';
 
   const nextWeekDates = getNextWeekDates();
@@ -2128,7 +2154,7 @@ function renderCalDayModal(){
 /* ---- Calendar day VIEW modal (managers: click a day to see who's working) ---- */
 function renderCalDayViewModal(){
   const cv = state.calDayViewModal; if(!cv) return '';
-  const interns = USERS.filter(x=>x.role==='intern');
+  const interns = USERS.filter(x=>x.role==='intern' && x.active!==false);
   const rowsHtml = interns.map(iu=>{
     const entry = normalizeDayEntry(SCHEDULE[iu.id] && SCHEDULE[iu.id][cv.date]);
     return `
@@ -2474,9 +2500,9 @@ function renderPeoplePage(u){
     </div>
     <div class="panel">
       <div class="scrollx"><table class="data-table">
-        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Chức danh</th><th>Quản lý phụ trách</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
+        <thead><tr><th>Họ tên</th><th>Vai trò</th><th>Trạng thái</th><th>Chức danh</th><th>Quản lý phụ trách</th><th>Tài khoản</th><th>Email nhận thông báo</th><th>Ngày tham gia</th><th></th></tr></thead>
         <tbody>
-          ${USERS.map(p=>`<tr>
+          ${USERS.map(p=>`<tr${p.active===false?' style="opacity:.55;"':''}>
             <td style="display:flex;align-items:center;gap:9px;">${avatarHtml(p, 26, 10.5)}${escapeHtml(p.name)}</td>
             <td>
               <select data-rolechange="${p.id}" data-prevrole="${p.role}" ${p.id===u.id?'disabled':''} style="border:1px solid var(--border);border-radius:10px;padding:4px 8px;background:var(--surface);color:var(--ink);font-size:12.5px;">
@@ -2485,6 +2511,7 @@ function renderPeoplePage(u){
                 <option value="intern" ${p.role==='intern'?'selected':''}>Thực tập sinh</option>
               </select>
             </td>
+            <td><span class="pill ${p.active===false?'pill-fix':'pill-approved'}">${p.active===false?'Ngừng hoạt động':'Đang hoạt động'}</span></td>
             <td>${escapeHtml(p.title||'')}</td>
             <td>
               <select data-managerchange="${p.id}" data-prevmanager="${p.managerId||''}" style="border:1px solid var(--border);border-radius:10px;padding:4px 8px;background:var(--surface);color:var(--ink);font-size:12.5px;min-width:150px;">
@@ -2494,15 +2521,16 @@ function renderPeoplePage(u){
             <td class="num-cell">${escapeHtml(p.username)}</td>
             <td>${p.email ? escapeHtml(p.email) : `<span style="color:var(--danger);font-size:11.5px;">Chưa có</span>`}</td>
             <td class="num-cell">${p.joined||''}</td>
-            <td style="display:flex;gap:6px;justify-content:flex-end;">
+            <td style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-sm" data-editperson="${p.id}">Sửa</button>
               <button class="btn btn-ghost btn-sm" data-resetpw="${p.id}" data-personname="${escapeHtml(p.name)}">Đặt lại mật khẩu</button>
+              ${p.id===u.id?'':`<button class="btn btn-ghost btn-sm" data-toggleactive="${p.id}" data-newactive="${p.active===false?'1':'0'}">${p.active===false?'Kích hoạt lại':'Ngừng hoạt động'}</button>`}
               ${p.id===u.id?'':`<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-removeuser="${p.id}">Xoá</button>`}
             </td>
           </tr>`).join('')}
         </tbody>
       </table></div>
-      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn. Cần nhập "Email nhận thông báo" (email thật) thì người đó mới nhận được mail khi được giao task / có bài chờ duyệt / được duyệt bài. "Quản lý phụ trách" dùng để nhóm số liệu ở trang Báo cáo theo từng quản lý — đổi cũng có hiệu lực ngay.</div>
+      <div style="font-size:11.5px;color:var(--ink-faint);margin-top:10px;">Đổi vai trò có hiệu lực ngay lập tức, kể cả khi người đó đang đăng nhập sẵn. Cần nhập "Email nhận thông báo" (email thật) thì người đó mới nhận được mail khi được giao task / có bài chờ duyệt / được duyệt bài. "Quản lý phụ trách" dùng để nhóm số liệu ở trang Báo cáo theo từng quản lý — đổi cũng có hiệu lực ngay. Nút "Ngừng hoạt động" dùng khi ai đó đã nghỉ/off: họ biến mất khỏi Lịch làm việc và không bị giao task mới nữa, bị đăng xuất ngay nếu đang đăng nhập sẵn — nhưng vẫn giữ nguyên tên thật trong các task/báo cáo cũ, và có thể "Kích hoạt lại" bất cứ lúc nào nếu quay lại làm. Khác với nút "Xoá" (xoá vĩnh viễn, không hoàn tác được).</div>
     </div>
     ${state.resetPwModal ? renderResetPwModal() : ''}
     ${state.bulkPersonModal ? renderBulkPersonModal() : ''}
@@ -2715,7 +2743,7 @@ function attachHandlers(){
       const uname = document.getElementById('loginUser').value.trim();
       const pass = document.getElementById('loginPass').value;
       const btn = loginForm.querySelector('button[type="submit"]');
-      state.loginError=''; if(btn) btn.disabled = true;
+      state.loginError=''; blockedLoginMessage=''; if(btn) btn.disabled = true;
       const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(uname), password: pass });
       if(error){
         const msg = String(error.message||'');
@@ -3105,6 +3133,14 @@ function attachHandlers(){
     const person = byId(b.dataset.removeuser);
     state.confirmModal = {title:'Xoá nhân sự', message:`Xoá "${person.name}" khỏi hệ thống? Các task đã giao trước đó vẫn còn nhưng sẽ hiện "(đã xoá)".`, confirmLabel:'Xoá', onConfirm:'removeUser', payload:person.id};
     render();
+  }));
+  app.querySelectorAll('[data-toggleactive]').forEach(b=>b.addEventListener('click', async ()=>{
+    const uid = b.dataset.toggleactive;
+    const newActive = b.dataset.newactive === '1';
+    b.disabled = true;
+    try{ await callFn('set-member-active', {uid, active:newActive}); }
+    catch(err){ alert('Không đổi được trạng thái: ' + (err.message||err)); }
+    b.disabled = false;
   }));
 
   const openPersonBtn = app.querySelector('[data-action="openPersonModal"]');
