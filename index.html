@@ -763,6 +763,7 @@ async function enqueueSheetSync(t, statusLabel, extraNote){
         deadline: t.deadline,
         statusLabel: statusLabel,
         link: t.fileLink || '',
+        publishedUrl: t.publishedUrl || '',
         desc: t.desc || '',
         note: extraNote || t.note || '',
       },
@@ -850,7 +851,7 @@ async function callFn(name, payload){
    site below unchanged from the original design — only this adapter and
    the subscription wiring differ between backends. */
 const FIELD_MAP = {
-  tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
+  tasks:   { keyword:'keyword', type:'type', assignee:'assignee', assignedBy:'assigned_by', deadline:'deadline', createdAt:'created_at', status:'status', fileLink:'file_link', publishedUrl:'published_url', desc:'description', note:'note', history:'history', comments:'comments', taskNo:'task_no', weekId:'week_id' },
   users:   { name:'name', role:'role', title:'title', username:'username', joined:'joined', email:'email', managerId:'manager_id', avatarUrl:'avatar_url', active:'active' },
   schedule:{ days:'days' },
   leaveRequests: { userId:'user_id', date:'date', reason:'reason', status:'status' },
@@ -1393,7 +1394,7 @@ function openDatePicker(id){
 // — mở được trực tiếp bằng Google Sheets / Excel. Có thêm BOM (﻿) ở đầu
 // để tiếng Việt có dấu không bị lỗi font khi mở file.
 function exportTasksCsv(list){
-  const header = ['Tuần','Từ khoá','Trạng thái','Phân loại','Nhân sự','Người giao','Deadline','File'];
+  const header = ['Tuần','Từ khoá','Trạng thái','Phân loại','Nhân sự','Người giao','Deadline','File','URL đã đăng'];
   const rows = list.map(t=>{
     const a = byId(t.assignee), b = byId(t.assignedBy);
     return [
@@ -1404,7 +1405,8 @@ function exportTasksCsv(list){
       a.name || '',
       b.name || '',
       t.deadline ? fmtDateFull(t.deadline) : '',
-      t.fileLink || ''
+      t.fileLink || '',
+      t.publishedUrl || ''
     ];
   });
   const csvEscape = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
@@ -1479,7 +1481,7 @@ function renderTasksPage(u){
 
   const STATUS_COLOR_KEY = { assigned:'assigned', in_progress:'progress', review:'review', fix:'fix', fixed:'fixed', approved:'approved' };
   const currentTabLabel = state.taskScope==='range' ? 'Khoảng ngày đã chọn' : 'Tuần hiện tại';
-  const colCount = u.role!=='intern' ? 8 : 7;
+  const colCount = u.role!=='intern' ? 9 : 8;
 
   return `
     <div class="stat-row stat-row-pipeline">
@@ -1564,7 +1566,7 @@ function renderTasksPage(u){
         <thead><tr>
           <th>Tuần</th><th>Từ khoá</th><th>Trạng thái</th><th>Phân loại</th>
           ${u.role!=='intern' ? '<th>Nhân sự</th>' : ''}
-          <th>Người giao</th><th>Deadline</th><th>File</th>
+          <th>Người giao</th><th>Deadline</th><th>File</th><th>URL</th>
         </tr></thead>
         <tbody>
           ${shownList.length ? shownList.map(t=>{
@@ -1579,6 +1581,7 @@ function renderTasksPage(u){
               <td>${escapeHtml(b.name)}</td>
               <td class="num-cell"><span class="dl-cell ${overdue?'late':''}">${overdue?iconWarningSmall():''}${fmtDate(t.deadline)}</span></td>
               <td>${t.fileLink ? `<a class="file-link" href="${escapeHtml(t.fileLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${iconLinkSmall()}Xem bài</a>` : `<span class="file-empty">Chưa nộp</span>`}</td>
+              <td>${t.publishedUrl ? `<a class="file-link" href="${escapeHtml(t.publishedUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${iconLinkSmall()}Đã đăng</a>` : `<span class="file-empty">Chưa có</span>`}</td>
             </tr>`;
           }).join('') : `<tr><td colspan="${colCount}" style="text-align:center;color:var(--ink-faint);padding:26px 0;">${state.taskTab==='backlog'?'Không có task tồn đọng nào 🎉':'Không có task nào khớp bộ lọc hiện tại.'}</td></tr>`}
         </tbody>
@@ -1633,6 +1636,14 @@ function renderTaskModal(t,u){
         <div class="detail-row"><div class="k">Deadline</div><div class="v">${t.deadline}${isOverdue(t.deadline,t.status)?' <span style="color:var(--danger);font-weight:700;">— đã trễ</span>':''}</div></div>
         <div class="detail-row"><div class="k">Mô tả</div><div class="v">${escapeHtml(t.desc)}</div></div>
         <div class="detail-row"><div class="k">File</div><div class="v">${t.fileLink?`<a href="${escapeHtml(t.fileLink)}" target="_blank" rel="noopener">${escapeHtml(t.fileLink)}</a>`:'<span style="color:var(--ink-faint)">Chưa có</span>'}</div></div>
+        <div class="detail-row"><div class="k">URL bài đã đăng</div><div class="v">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="url" id="publishedUrlInput" placeholder="https://fpt.vn/..." value="${escapeHtml(t.publishedUrl||'')}" style="flex:1;min-width:220px;padding:7px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;background:var(--surface);color:var(--ink);">
+            <button type="button" class="btn btn-primary btn-sm" data-action="savePublishedUrl" data-taskid="${t.id}">Lưu URL</button>
+            ${t.publishedUrl?`<a href="${escapeHtml(t.publishedUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Mở link</a>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Khai báo link bài đã đăng LÊN WEB THẬT (khác với "File" — link bản thảo/Doc). Lưu xong sẽ tự đẩy vào cột "URL đã đăng" trong Sheet quản lý.</div>
+        </div></div>
         ${t.note?`<div class="detail-row"><div class="k">Ghi chú sửa</div><div class="v" style="color:var(--st-fix)">${escapeHtml(t.note)}</div></div>`:''}
         <div class="detail-row"><div class="k">Lịch sử</div><div class="v history">${(t.history||[]).map(h=>`<div class="history-item"><span class="t">${h.t}</span>${escapeHtml(h.text)}</div>`).join('')}</div></div>
         <div class="detail-row"><div class="k">Bình luận</div><div class="v">
@@ -2835,6 +2846,21 @@ function attachHandlers(){
       // duyệt) — không tạo dòng mới, xem enqueueSheetSync().
       await enqueueSheetSync({...t, status:'approved'}, STATUS_META.approved.label);
     }
+  }));
+
+  app.querySelectorAll('[data-action="savePublishedUrl"]').forEach(b=>b.addEventListener('click', async ()=>{
+    const taskId = b.dataset.taskid;
+    const t = getTaskById(taskId); if(!t) return;
+    const input = document.getElementById('publishedUrlInput');
+    const val = (input.value||'').trim();
+    b.disabled = true;
+    try{
+      await dbApi.collection('tasks').doc(taskId).update({ publishedUrl: val });
+      // Đẩy lại đúng dòng Sheet sẵn có của task (không tạo dòng mới) để cột
+      // "URL đã đăng" cập nhật theo — xem enqueueSheetSync().
+      await enqueueSheetSync({...t, publishedUrl: val}, STATUS_META[t.status]?.label || t.status);
+      render();
+    }catch(err){ alert('Không lưu được URL: ' + (err.message||err)); b.disabled = false; }
   }));
 
   app.querySelectorAll('[data-action="addComment"]').forEach(b=>b.addEventListener('click', async ()=>{
