@@ -1551,17 +1551,17 @@ function renderTasksPage(u){
     state.taskRangeFrom = isoOf(d.getFullYear(), d.getMonth(), 1);
     state.taskRangeTo = isoOf(d.getFullYear(), d.getMonth(), daysInMonth(d.getFullYear(), d.getMonth()));
   }
-  const managers = USERS.filter(x=>x.role==='manager'||x.role==='admin');
+  // "Người giao việc": chỉ liệt kê Quản lý/Admin đang hoạt động — trên thực tế
+  // chỉ quản lý mới giao việc, liệt kê cả thực tập sinh vào đây chỉ gây rối.
+  const managers = USERS.filter(x=>(x.role==='manager'||x.role==='admin') && x.active!==false)
+    .sort((a,b)=>a.name.localeCompare(b.name));
   const interns = USERS.filter(x=>x.role==='intern');
-  // Ai cũng có thể tự tạo task giao cho chính mình (kể cả Admin/Manager), nên
-  // 2 bộ lọc "Người giao việc" / "Người thực hiện" phải liệt kê TOÀN BỘ nhân
-  // sự, không chỉ Manager/Admin hoặc chỉ thực tập sinh — nếu không, task tự
-  // giao của Admin/Manager sẽ không lọc được theo tên.
   const allPeople = USERS.slice().sort((a,b)=>a.name.localeCompare(b.name));
   // Riêng dropdown "Người thực hiện": chỉ liệt kê người có task phát sinh
-  // hoặc còn deadline trong tháng này — ai không có hoạt động gì trong
-  // tháng thì ẩn khỏi dropdown (vẫn còn trong hệ thống, chỉ là không hiện ở
-  // đây để đỡ rối khi list nhân sự dài ra).
+  // hoặc còn deadline trong tháng này — kể cả acc đã Ngừng hoạt động, nếu họ
+  // vẫn còn task phát sinh/deadline trong tháng thì vẫn ghi tên bình thường
+  // (để còn lọc/xem lại task cũ của họ). Ai không có hoạt động gì trong
+  // tháng thì ẩn khỏi dropdown cho đỡ rối khi list nhân sự dài ra.
   const activeAssigneeIds = activeAssigneeIdsThisMonth();
   const assigneeFilterPeople = allPeople.filter(m=>activeAssigneeIds.has(m.id));
 
@@ -1677,7 +1677,7 @@ function renderTasksPage(u){
       <div class="field"><label>Phân loại</label>
         <select id="fType"><option value="">Tất cả</option>${TYPE_ORDER.map(t=>`<option value="${t}" ${state.taskFilters.type===t?'selected':''}>${TYPE_META[t].label}</option>`).join('')}</select>
       </div>
-      ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${allPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
+      ${u.role!=='intern' ? `<div class="field"><label>Người giao việc</label><select id="fAssignedBy"><option value="">Tất cả</option>${managers.map(m=>`<option value="${m.id}" ${state.taskFilters.assignedBy===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
       ${u.role!=='intern' ? `<div class="field"><label>Người thực hiện</label><select id="fAssignee"><option value="">Tất cả</option>${assigneeFilterPeople.map(m=>`<option value="${m.id}" ${state.taskFilters.assignee===m.id?'selected':''}>${m.name}</option>`).join('')}</select></div>` : ''}
       <button class="choice-btn ${state.taskFilters.overdueOnly?'danger-active':''}" data-action="toggleOverdueFilter">${iconWarningSmall()}Trễ deadline</button>
       <button class="btn btn-ghost btn-sm" data-action="clearFilters">Xoá lọc</button>
