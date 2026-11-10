@@ -278,7 +278,7 @@
   /* ---------- per-status cards, same box as overview cards (keeps the whole
      row visually even — mixing a "big rectangle" style with a separate dense
      strip style is what made the first version look lệch) ---------- */
-  .stat-row-pipeline{ grid-template-columns:repeat(8,1fr); }
+  .stat-row-pipeline{ grid-template-columns:repeat(auto-fit, minmax(145px,1fr)); }
   .stat-card .value.st-assigned{ color:var(--st-assigned); }
   .stat-card .value.st-progress{ color:var(--st-progress); }
   .stat-card .value.st-review{ color:var(--st-review); }
@@ -674,14 +674,10 @@
     nav.mainnav{ flex-direction:row; flex-wrap:wrap; }
     .sidebar-card{ display:none; }
     .stat-row{ grid-template-columns:1fr 1fr; }
-    .stat-row-pipeline{ grid-template-columns:repeat(4,1fr); }
     .two-col{ grid-template-columns:1fr; }
     .form-grid{ grid-template-columns:1fr; }
     .page{ padding:18px 16px 50px; }
     .topbar{ padding:14px 16px; }
-  }
-  @media (max-width: 480px){
-    .stat-row-pipeline{ grid-template-columns:repeat(2,1fr); }
   }
 
   /* ---------- UI redesign v5: vàng gold sáng + pastel nhiều màu, phẳng gọn ---------- */
